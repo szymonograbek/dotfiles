@@ -104,3 +104,7 @@ source "/opt/homebrew/opt/spaceship/spaceship.zsh"
 # Aliases
 alias cdg='cd $(git rev-parse --show-toplevel)'
 alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+
+# Bindings
+bindkey "\e\e[D" backward-word
+bindkey "\e\e[C" forward-word
