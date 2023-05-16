@@ -104,6 +104,8 @@ source "/opt/homebrew/opt/spaceship/spaceship.zsh"
 # Aliases
 alias cdg='cd $(git rev-parse --show-toplevel)'
 alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+alias tmuxa='tmux attach -t'
+alias tmuxn='tmux new-session -s'
 
 # Bindings
 bindkey "\e\e[D" backward-word
