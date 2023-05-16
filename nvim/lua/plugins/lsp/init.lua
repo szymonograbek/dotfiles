@@ -6,15 +6,15 @@ local cmp_action = require("lsp-zero").cmp_action()
 local select_opts = { behavior = "select" }
 
 -- Fix Undefined global 'vim'
-lsp.configure("lua-language-server", {
-	settings = {
-		Lua = {
-			diagnostics = {
-				globals = { "vim" },
-			},
-		},
-	},
-})
+-- lsp.configure("lua-language-server", {
+-- 	settings = {
+-- 		Lua = {
+-- 			diagnostics = {
+-- 				globals = { "vim" },
+-- 			},
+-- 		},
+-- 	},
+-- })
 
 lsp.on_attach(function(client, bufnr)
 	lsp.default_keymaps({ buffer = bufnr })
@@ -59,28 +59,5 @@ cmp.setup({
 		-- scroll between placeholder
 		["<C-f>"] = cmp_action.luasnip_jump_forward(),
 		["<C-b>"] = cmp_action.luasnip_jump_backward(),
-
-		-- when menu is visible, navigate to next item
-		-- when line is empty, insert a tab character
-		-- else, activate completion
-		["<Tab>"] = cmp.mapping(function(fallback)
-			if cmp.visible() then
-				cmp.select_next_item(select_opts)
-			elseif util.check_back_space() then
-				fallback()
-			else
-				cmp.complete()
-			end
-		end, { "i", "s" }),
-
-		-- when menu is visible, navigate to previous item on list
-		-- else, revert to default behavior
-		["<S-Tab>"] = cmp.mapping(function(fallback)
-			if cmp.visible() then
-				cmp.select_prev_item(select_opts)
-			else
-				fallback()
-			end
-		end, { "i", "s" }),
 	},
 })

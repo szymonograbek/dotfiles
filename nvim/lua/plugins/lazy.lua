@@ -30,6 +30,10 @@ return require("lazy").setup({
 	-- Colorschemes
 	"folke/tokyonight.nvim",
 	{
+		"olimorris/onedarkpro.nvim",
+		priority = 1000, -- Ensure it loads first""
+	},
+	{
 		"VonHeikemen/lsp-zero.nvim",
 		branch = "v2.x",
 		dependencies = {

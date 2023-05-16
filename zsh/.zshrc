@@ -100,3 +100,6 @@ source $ZSH/oh-my-zsh.sh
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 source "/opt/homebrew/opt/spaceship/spaceship.zsh"
+
+# Aliases
+alias cdg='cd $(git rev-parse --show-toplevel)'
