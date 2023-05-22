@@ -106,7 +106,13 @@ alias cdg='cd $(git rev-parse --show-toplevel)'
 alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 alias tmuxa='tmux attach -t'
 alias tmuxn='tmux new-session -s'
+alias dotfiles_sync='dotfiles add .zshrc .tmux.conf .config/nvim .config/yabai .config/skhd; dotfiles commit -m "dotfiles sync"; dotfiles push origin main'
 
 # Bindings
 bindkey "\e\e[D" backward-word
 bindkey "\e\e[C" forward-word
+
+# Android Studio
+export ANDROID_HOME=$HOME/Library/Android/sdk
+export PATH=$PATH:$ANDROID_HOME/emulator
+export PATH=$PATH:$ANDROID_HOME/platform-tools
