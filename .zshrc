@@ -98,7 +98,6 @@ source $ZSH/oh-my-zsh.sh
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
-source "/opt/homebrew/opt/spaceship/spaceship.zsh"
 
 # Aliases
 alias cdg='cd $(git rev-parse --show-toplevel)'
@@ -106,6 +105,8 @@ alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
 alias tmuxa='tmux attach -t'
 alias tmuxn='tmux new-session -s'
 alias dotfiles_sync='dotfiles add .zshrc .tmux.conf .config/nvim .config/yabai .config/skhd; dotfiles commit -m "dotfiles sync"; dotfiles push origin main'
+unalias gcf
+alias gcf='git checkout $(git branch -a | fzf | xargs)'
 
 # Bindings
 bindkey "\e\e[D" backward-word
@@ -126,3 +127,14 @@ esac
 
 # Direnv
 eval "$(direnv hook zsh)"
+
+# bun completions
+[ -s "/Users/szymonograbek/.bun/_bun" ] && source "/Users/szymonograbek/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Spaceship disabled as it slows down the terminal (i.e. Warp)
+# source "/opt/homebrew/opt/spaceship/spaceship.zsh"
+# SPACESHIP_PROMPT_ASYNC=FALSE
