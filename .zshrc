@@ -138,3 +138,13 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # Spaceship disabled as it slows down the terminal (i.e. Warp)
 # source "/opt/homebrew/opt/spaceship/spaceship.zsh"
 # SPACESHIP_PROMPT_ASYNC=FALSE
+export PATH=$PATH:$HOME/.maestro/bin
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/szymonograbek/Downloads/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/szymonograbek/Downloads/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/szymonograbek/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/szymonograbek/Downloads/google-cloud-sdk/completion.zsh.inc'; fi
+
+alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+
