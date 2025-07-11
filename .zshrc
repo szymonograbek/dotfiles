@@ -147,4 +147,15 @@ if [ -f '/Users/szymonograbek/Downloads/google-cloud-sdk/path.zsh.inc' ]; then .
 if [ -f '/Users/szymonograbek/Downloads/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/szymonograbek/Downloads/google-cloud-sdk/completion.zsh.inc'; fi
 
 alias dotfiles='/usr/bin/git --git-dir=$HOME/.dotfiles/ --work-tree=$HOME'
+alias ws_start='~/start-workstation.exp'
 
+
+# BEGIN opam configuration
+# This is useful if you're using opam as it adds:
+#   - the correct directories to the PATH
+#   - auto-completion for the opam binary
+# This section can be safely removed at any time if needed.
+[[ ! -r '/Users/szymonograbek/.opam/opam-init/init.zsh' ]] || source '/Users/szymonograbek/.opam/opam-init/init.zsh' > /dev/null 2> /dev/null
+# END opam configuration
+
+. "$HOME/.local/bin/env"
