@@ -166,12 +166,7 @@ run = ["move-node-to-workspace 2"]
 [[on-window-detected]]
 if.app-id = "com.apple.iphonesimulator"
 check-further-callbacks = true
-run = ["move-node-to-workspace Q"]
-
-[[on-window-detected]]
-if.app-id = "com.apple.iphonesimulator"
-check-further-callbacks = true
-run = ["move-node-to-workspace Q"]
+run = ["layout floating", "move-node-to-workspace Q"]
 
 [[on-window-detected]]
 if.app-id = "com.linear"
