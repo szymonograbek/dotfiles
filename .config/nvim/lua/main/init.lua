@@ -1,0 +1,5 @@
+require("main.options")
+require("main.lazy")
+require("main.keymaps")
+-- require("main.filetypes")
+require("main.highlight_yank")
