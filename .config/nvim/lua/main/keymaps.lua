@@ -87,40 +87,60 @@ end, { desc = "Search current word using Spectre" })
 
 -- Harpoon keybinds --
 vim.keymap.set("n", "<leader>ho", function()
-	require("harpoon.ui").toggle_quick_menu()
+	local harpoon = require("harpoon")
+	harpoon.ui:toggle_quick_menu(harpoon:list())
 end, { desc = "Toggle Harpoon quick menu" })
 
 vim.keymap.set("n", "<leader>ha", function()
-	require("harpoon.mark").add_file()
+	local harpoon = require("harpoon")
+	harpoon:list():add()
 end, { desc = "Add current file to Harpoon" })
 
 vim.keymap.set("n", "<leader>hr", function()
-	require("harpoon.mark").rm_file()
+	local harpoon = require("harpoon")
+	harpoon:list():remove()
 end, { desc = "Remove current file from Harpoon" })
 
 vim.keymap.set("n", "<leader>hc", function()
-	require("harpoon.mark").clear_all()
+	local harpoon = require("harpoon")
+	harpoon:list():clear()
 end, { desc = "Clear all Harpoon marks" })
 
 vim.keymap.set("n", "<leader>1", function()
-	require("harpoon.ui").nav_file(1)
+	local harpoon = require("harpoon")
+	harpoon:list():select(1)
 end, { desc = "Navigate to Harpoon file 1" })
 
 vim.keymap.set("n", "<leader>2", function()
-	require("harpoon.ui").nav_file(2)
+	local harpoon = require("harpoon")
+	harpoon:list():select(2)
 end, { desc = "Navigate to Harpoon file 2" })
 
 vim.keymap.set("n", "<leader>3", function()
-	require("harpoon.ui").nav_file(3)
+	local harpoon = require("harpoon")
+	harpoon:list():select(3)
 end, { desc = "Navigate to Harpoon file 3" })
 
 vim.keymap.set("n", "<leader>4", function()
-	require("harpoon.ui").nav_file(4)
+	local harpoon = require("harpoon")
+	harpoon:list():select(4)
 end, { desc = "Navigate to Harpoon file 4" })
 
 vim.keymap.set("n", "<leader>5", function()
-	require("harpoon.ui").nav_file(5)
+	local harpoon = require("harpoon")
+	harpoon:list():select(5)
 end, { desc = "Navigate to Harpoon file 5" })
+
+-- Navigate to previous & next buffers in Harpoon list
+vim.keymap.set("n", "<leader>hp", function()
+	local harpoon = require("harpoon")
+	harpoon:list():prev()
+end, { desc = "Navigate to previous Harpoon file" })
+
+vim.keymap.set("n", "<leader>hn", function()
+	local harpoon = require("harpoon")
+	harpoon:list():next()
+end, { desc = "Navigate to next Harpoon file" })
 
 -- Telescope keybinds --
 vim.keymap.set("n", "<leader>?", require("telescope.builtin").oldfiles, { desc = "Find recently opened files" })
@@ -200,5 +220,17 @@ vim.keymap.set("v", "<A-j>", ":m '>+1<CR>gv=gv", { desc = "Move selected block d
 vim.keymap.set("v", "<A-k>", ":m '<-2<CR>gv=gv", { desc = "Move selected block up" })
 
 vim.keymap.set("x", "<leader>p", '"_dP', { desc = "Paste without overwriting register" })
+
+-- Panel navigation
+vim.keymap.set("n", "<C-h>", "<C-w>h", { desc = "Move to left panel" })
+vim.keymap.set("n", "<C-l>", "<C-w>l", { desc = "Move to right panel" })
+
+-- Outline
+vim.keymap.set("n", "<leader>oo", ":Outline!<CR>", { desc = "Toggle Outline" })
+
+-- Edgy
+vim.keymap.set("n", "<leader>t", function()
+	require("edgy").toggle()
+end, { desc = "Toggle Edgy" })
 
 return M

@@ -2,8 +2,6 @@
 vim.opt.nu = true
 vim.opt.rnu = true
 
-
-
 -- Set tabs to 2 spaces
 vim.opt.tabstop = 2
 vim.opt.softtabstop = 2
@@ -52,9 +50,6 @@ vim.opt.termguicolors = true
 
 -- Enable the sign column to prevent the screen from jumping
 vim.opt.signcolumn = "yes"
-
--- Enable access to System Clipboard
-vim.opt.clipboard = "unnamed,unnamedplus"
 
 -- Enable cursor line highlight
 vim.opt.cursorline = true

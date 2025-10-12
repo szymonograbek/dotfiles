@@ -3,8 +3,6 @@ return {
 		"nvim-lualine/lualine.nvim",
 		event = "VeryLazy",
 		config = function()
-			local harpoon = require("harpoon.mark")
-
 			local function truncate_branch_name(branch)
 				if not branch or branch == "" then
 					return ""
@@ -21,22 +19,14 @@ return {
 				end
 			end
 
-			local function harpoon_component()
-				local total_marks = harpoon.get_length()
+			local harpoon = require("harpoon")
+			local palette = require("catppuccin.palettes").get_palette("macchiato")
 
-				if total_marks == 0 then
-					return ""
-				end
-
-				local current_mark = "—"
-
-				local mark_idx = harpoon.get_current_index()
-				if mark_idx ~= nil then
-					current_mark = tostring(mark_idx)
-				end
-
-				return string.format("󱡅 %s/%d", current_mark, total_marks)
-			end
+			vim.api.nvim_set_hl(0, "HarpoonInactive", { fg = palette.overlay1, bg = palette.base })
+			vim.api.nvim_set_hl(0, "HarpoonActive", { fg = palette.blue, bg = palette.base })
+			vim.api.nvim_set_hl(0, "HarpoonNumberActive", { fg = palette.yellow, bg = palette.base })
+			vim.api.nvim_set_hl(0, "HarpoonNumberInactive", { fg = palette.peach, bg = palette.base })
+			vim.api.nvim_set_hl(0, "TabLineFill", { fg = palette.text, bg = palette.base })
 
 			require("lualine").setup({
 				options = {
@@ -48,7 +38,6 @@ return {
 				sections = {
 					lualine_b = {
 						{ "branch", icon = "", fmt = truncate_branch_name },
-						harpoon_component,
 						"diff",
 						"diagnostics",
 					},
