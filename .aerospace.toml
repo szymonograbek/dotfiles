@@ -53,9 +53,9 @@ alt-7 = 'workspace 7'
 alt-8 = 'workspace 8'
 alt-9 = 'workspace 9'
 alt-q = 'workspace Q'
-alt-w = 'workspace W' # AI 
-alt-d = 'workspace D' # Other work related apps
-alt-v = 'workspace V' # Linear etc.
+alt-w = 'workspace W'
+alt-d = 'workspace D' 
+alt-v = 'workspace V'
 
 alt-shift-1 = 'move-node-to-workspace 1'
 alt-shift-2 = 'move-node-to-workspace 2'
@@ -117,18 +117,12 @@ check-further-callbacks = true
 run = ['layout floating']
 
 [[on-window-detected]]
-if.app-id = 'company.thebrowser.Browser'
+if.app-id = 'app.zen-browsen.zen'
 check-further-callbacks = true
 run = ['move-node-to-workspace 3']
 
 [[on-window-detected]]
 if.app-id = 'com.tinyspeck.slackmacgap'
-check-further-callbacks = true
-run = ['move-node-to-workspace 4']
-
-# Google Chat PWA
-[[on-window-detected]]
-if.app-id = 'com.google.Chrome.app.mdpkiolbdkhdjpekfbkbmhigcaggjagi'
 check-further-callbacks = true
 run = ['move-node-to-workspace 4']
 
@@ -147,12 +141,7 @@ if.app-id = 'com.microsoft.VSCode'
 check-further-callbacks = true
 run = ['move-node-to-workspace 1']
 
-# Code OSS PWA
-[[on-window-detected]]
-if.app-id = 'com.google.Chrome.app.bpoolcepmmobchiibclcagcjhfaafnbj'
-check-further-callbacks = true
-run = ['move-node-to-workspace 1']
-
+# Cursor
 [[on-window-detected]]
 if.app-id = 'com.todesktop.230313mzl4w4u92'
 check-further-callbacks = true
@@ -169,15 +158,12 @@ check-further-callbacks = true
 run = ["layout floating", "move-node-to-workspace Q"]
 
 [[on-window-detected]]
-if.app-id = "com.linear"
-run = "move-node-to-workspace V"
-
-[[on-window-detected]]
-if.app-id = "com.linear"
+if.app-id = "com.electron.ellie"
 check-further-callbacks = true
 run = ["move-node-to-workspace V"]
 
 [[on-window-detected]]
-if.app-id = "com.anthropic.claudefordesktop"
+if.app-id = "ru.keepcoder.Telegram"
 check-further-callbacks = true
 run = ["move-node-to-workspace W"]
+
