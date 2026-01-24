@@ -1,5 +1,8 @@
 /opt/homebrew/bin/brew shellenv | source
 
+# Add ~/.local/bin to PATH
+fish_add_path ~/.local/bin
+
 # Disable greeting
 set fish_greeting 
 
@@ -18,3 +21,7 @@ direnv hook fish | source
 # This section can be safely removed at any time if needed.
 test -r '/Users/szymonograbek/.opam/opam-init/init.fish' && source '/Users/szymonograbek/.opam/opam-init/init.fish' > /dev/null 2> /dev/null; or true
 # END opam configuration
+
+# Added by OrbStack: command-line tools and integration
+# This won't be added again if you remove it.
+source ~/.orbstack/shell/init2.fish 2>/dev/null || :
