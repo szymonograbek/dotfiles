@@ -1,4 +1,6 @@
-/opt/homebrew/bin/brew shellenv | source
+if test (uname) = Darwin
+    /opt/homebrew/bin/brew shellenv | source
+end
 
 # Add ~/.local/bin to PATH
 fish_add_path ~/.local/bin
