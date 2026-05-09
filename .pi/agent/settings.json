@@ -2,9 +2,15 @@
   "lastChangelogVersion": "0.74.0",
   "packages": [
     "npm:pi-claude-bridge",
-    "npm:@plannotator/pi-extension"
+    "npm:@plannotator/pi-extension",
+    "npm:pi-web-access"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "low"
+  "defaultThinkingLevel": "low",
+  "compaction": {
+    "enabled": false
+  },
+  "editorPaddingX": 1,
+  "theme": "dark"
 }
