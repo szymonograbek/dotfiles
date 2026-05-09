@@ -5,6 +5,9 @@ end
 # Add ~/.local/bin to PATH
 fish_add_path ~/.local/bin
 
+# Add npm global bin to PATH
+fish_add_path ~/.npm-global/bin
+
 # Disable greeting
 set fish_greeting 
 
