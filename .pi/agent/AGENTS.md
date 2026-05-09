@@ -1,0 +1,1 @@
+/Users/szymonograbek/.agents/AGENTS.md

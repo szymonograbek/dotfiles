@@ -1,0 +1,10 @@
+{
+  "lastChangelogVersion": "0.74.0",
+  "packages": [
+    "npm:pi-claude-bridge",
+    "npm:pi-mcporter"
+  ],
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "low"
+}
