@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "effect-docs": {
+      "command": "npx",
+      "args": ["-y", "effect-mcp@latest"]
+    },
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp"
+    },
+    "figma": {
+      "description": "Figma MCP for design context, components, and variables.",
+      "baseUrl": "https://mcp.figma.com/mcp",
+      "auth": "oauth",
+      "clientName": "Claude Code"
+    }
+  }
+}
