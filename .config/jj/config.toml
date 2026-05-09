@@ -1,0 +1,16 @@
+[user]
+email = "szymon.ograbek2@gmail.com"
+name = "Szymon Ograbek"
+
+[git]
+auto-local-bookmark = false
+
+[[--scope]]
+--when.repositories = ["~/dev/Karen"]
+[--scope.revsets]
+log = "@ | trunk() | bookmarks() | (ancestors(@) & descendants(trunk())) | (descendants(trunk()) & mine())"
+[--scope.git]
+auto-local-bookmark = false
+[--scope.user]
+email = "szymon.ograbek@44pixels.ai"
+name = "Szymon Ograbek"
