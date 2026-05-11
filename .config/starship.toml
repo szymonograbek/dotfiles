@@ -15,8 +15,20 @@ truncation_length = 18
 [lua]
 symbol = " "
 
+[nodejs]
+disabled = true
+
+[ruby]
+disabled = true
+
 [package]
 disabled = true
 
 [gcloud]
 disabled = true
+
+[custom.jj]
+when = "jj-starship detect"
+shell = ["jj-starship"]
+format = "$output "
+
