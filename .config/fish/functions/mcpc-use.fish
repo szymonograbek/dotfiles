@@ -1,6 +1,6 @@
-function mcp-credentials-use --description 'Load saved mcporter credentials for a server profile into credentials.json'
+function mcpc-use --description 'Load saved mcporter credentials for a server profile into credentials.json'
     if test (count $argv) -ne 2
-        echo "usage: mcp-credentials-use <mcp-name> <credentials-name>" >&2
+        echo "usage: mcpc-use <mcp-name> <credentials-name>" >&2
         return 2
     end
 

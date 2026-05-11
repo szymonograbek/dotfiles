@@ -1,6 +1,6 @@
-function mcp-credentials-list --description 'List saved mcporter credential profiles (optionally filtered by server)'
+function mcpc-list --description 'List saved mcporter credential profiles (optionally filtered by server)'
     if test (count $argv) -gt 1
-        echo "usage: mcp-credentials-list [<mcp-name>]" >&2
+        echo "usage: mcpc-list [<mcp-name>]" >&2
         return 2
     end
 

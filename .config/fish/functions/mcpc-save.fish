@@ -1,6 +1,6 @@
-function mcp-credentials-save --description 'Save current mcporter credentials for a server under a profile name'
+function mcpc-save --description 'Save current mcporter credentials for a server under a profile name'
     if test (count $argv) -ne 2
-        echo "usage: mcp-credentials-save <mcp-name> <credentials-name>" >&2
+        echo "usage: mcpc-save <mcp-name> <credentials-name>" >&2
         return 2
     end
 
