@@ -1,16 +1,21 @@
 {
   "lastChangelogVersion": "0.74.0",
   "packages": [
-    "npm:pi-claude-bridge",
     "npm:@plannotator/pi-extension",
-    "npm:pi-web-access"
+    "npm:pi-web-access",
+    "git:github.com/szymonograbek/pi-claude-bridge"
   ],
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "low",
+  "defaultProvider": "claude-bridge",
+  "defaultModel": "claude-opus-4-7",
+  "defaultThinkingLevel": "medium",
   "compaction": {
     "enabled": false
   },
   "editorPaddingX": 1,
-  "theme": "dark"
+  "theme": "dark",
+  "enabledModels": [
+    "openai-codex/gpt-5.5",
+    "claude-bridge/claude-sonnet-4-6",
+    "claude-bridge/claude-opus-4-7"
+  ]
 }

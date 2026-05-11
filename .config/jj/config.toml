@@ -14,3 +14,6 @@ auto-local-bookmark = false
 [--scope.user]
 email = "szymon.ograbek@44pixels.ai"
 name = "Szymon Ograbek"
+
+[revset-aliases]
+"immutable_heads()" = "trunk() | bookmarks(exact:'master') | bookmarks(exact:'main')"

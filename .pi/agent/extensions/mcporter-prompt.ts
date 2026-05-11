@@ -58,7 +58,7 @@ export default function (pi: ExtensionAPI) {
 		const list = truncateForPrompt(await mcporterList());
 
 		return {
-			systemPrompt: `${event.systemPrompt}\n\n## MCP servers available through mcporter\n\nUse the current snapshot below to answer questions about which MCP servers are available. Do not run \`mcporter list\` just to enumerate MCPs. Use mcporter commands only when you need fresh details, tool schemas, resources, or to call a relevant tool.\n\nCommands:\n- Discover servers: \`mcporter list\`\n- Inspect tools for a server only when relevant: \`mcporter list <server> --schema\`\n- Call a tool: \`mcporter call <server>.<tool> key=value ...\`\n- List/read resources: \`mcporter resource <server> [uri]\`\n\nCurrent server snapshot, intentionally without tool schemas to keep the prompt small:\n\`\`\`\n${list}\n\`\`\``,
+			systemPrompt: `${event.systemPrompt}\n\n<mcporter>\n## MCP servers available through mcporter\n\nUse the current snapshot below to answer questions about which MCP servers are available. Do not run \`mcporter list\` just to enumerate MCPs. Use mcporter commands only when you need fresh details, tool schemas, resources, or to call a relevant tool.\n\nCommands:\n- Discover servers: \`mcporter list\`\n- Inspect tools for a server only when relevant: \`mcporter list <server> --schema\`\n- Call a tool: \`mcporter call <server>.<tool> key=value ...\`\n- List/read resources: \`mcporter resource <server> [uri]\`\n\nCurrent server snapshot, intentionally without tool schemas to keep the prompt small:\n\`\`\`\n${list}\n\`\`\`\n</mcporter>`,
 		};
 	});
 }
