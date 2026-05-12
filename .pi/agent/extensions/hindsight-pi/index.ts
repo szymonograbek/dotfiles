@@ -49,7 +49,7 @@ const defaults: Config = {
   retainTags: [],
   retainMetadata: {},
   recallBudget: "mid",
-  recallMaxTokens: 1024,
+  recallMaxTokens: 512,
   recallTypes: ["world", "experience"],
   recallContextTurns: 1,
   recallMaxQueryChars: 800,
@@ -141,8 +141,10 @@ export default function (pi: ExtensionAPI) {
     for (const r of fresh) seen.add(r.id);
     state.injectedMemoryIds.set(sessionId, seen);
     const formatted = formatMemories(fresh);
-    ctx.ui.notify(`Hindsight recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}.`, "info");
-    verboseLog(config, `Recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId} (${results.length - fresh.length} deduped):\n${formatted}`);
+    const dedupedCount = results.length - fresh.length;
+    const dedupSuffix = dedupedCount > 0 ? ` (${dedupedCount} deduped)` : "";
+    ctx.ui.notify(`Hindsight recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}${dedupSuffix}.`, "info");
+    verboseLog(config, `Recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}${dedupSuffix}:\n${formatted}`);
     return { systemPrompt: `${event.systemPrompt}\n\n<hindsight_memories>\n${config.recallPromptPreamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formatted}\n</hindsight_memories>` };
   });
 
