@@ -1,0 +1,9 @@
+{
+  "hindsightApiUrl": "http://localhost:8888",
+  "autoRecall": true,
+  "autoRetain": true,
+  "recallBudget": "mid",
+  "retainEveryNTurns": 3,
+  "dynamicBankId": true,
+  "dynamicBankGranularity": ["agent", "gitProject"]
+}

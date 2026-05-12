@@ -1,0 +1,23 @@
+{
+  "provider": {
+    "systemPromptForwarding": {
+      "mode": "selected",
+      "include": [
+        { "kind": "agentsMd" },
+        { "kind": "skills" },
+        { "kind": "xmlTag", "tag": "mcporter" },
+        { "kind": "xmlTag", "tag": "hindsight_memories" }
+      ]
+    }
+  },
+  "askClaude": {
+    "systemPromptForwarding": {
+      "mode": "selected",
+      "include": [
+        { "kind": "skills" },
+        { "kind": "xmlTag", "tag": "mcporter" },
+        { "kind": "xmlTag", "tag": "hindsight_memories" }
+      ]
+    }
+  }
+}
