@@ -10,42 +10,77 @@ const DEFAULT_SOCKET_PATH = "/tmp/cmux.sock";
 const NOTIFY_TIMEOUT_MS = 2_000;
 const DEFAULT_MIN_DURATION_MS = 30_000;
 const MIN_DURATION_ENV = "CMUX_PI_NOTIFY_MIN_SECONDS";
+const STATUS_KEY = "pi";
+const IDLE_SETTLE_MS = 1_500;
+const CMUX_WORKSPACE_ENV = "CMUX_WORKSPACE_ID";
+const CMUX_SURFACE_ENV = "CMUX_SURFACE_ID";
 
 export default function cmuxExtension(pi: ExtensionAPI) {
 	let startedAt: number | undefined;
+	let runId = 0;
+	let completionTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const clearCompletionTimer = () => {
+		if (!completionTimer) return;
+		clearTimeout(completionTimer);
+		completionTimer = undefined;
+	};
+
+	const scheduleCompletion = (ctx: ExtensionContext, durationMs: number, completedRunId: number) => {
+		clearCompletionTimer();
+		completionTimer = setTimeout(() => {
+			completionTimer = undefined;
+			if (completedRunId !== runId) return;
+			if (!ctx.isIdle() || ctx.hasPendingMessages()) {
+				scheduleCompletion(ctx, durationMs, completedRunId);
+				return;
+			}
+
+			void setCmuxStatus("idle");
+			void (async () => {
+				if (!(await shouldNotify(durationMs))) return;
+				await notifyCmux(buildNotification(pi, ctx, durationMs));
+			})();
+		}, IDLE_SETTLE_MS);
+		completionTimer.unref?.();
+	};
+
+	pi.on("session_start", () => {
+		void setCmuxStatus("idle");
+	});
 
 	pi.on("agent_start", () => {
+		runId += 1;
+		clearCompletionTimer();
 		startedAt = Date.now();
+		void setCmuxStatus("working");
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
+	pi.on("agent_end", (_event, ctx) => {
 		const durationMs = startedAt ? Date.now() - startedAt : 0;
 		startedAt = undefined;
-
-		if (!(await shouldNotify(durationMs))) return;
-		await notifyCmux(buildNotification(pi, ctx, durationMs));
+		scheduleCompletion(ctx, durationMs, runId);
 	});
 
-	pi.registerCommand("cmux-test", {
-		description: "Send a test notification through cmux",
-		handler: async (_args, ctx) => {
-			const focus = await getFocusState();
-			const sent = await notifyCmux({
-				title: "Pi cmux test",
-				body: `Cmux notifications are configured for ${path.basename(ctx.cwd) || ctx.cwd}. Focus: ${formatFocusState(focus)}.`,
-			});
-			ctx.ui.notify(sent ? "Sent cmux notification" : "cmux is not available", sent ? "success" : "warning");
-		},
+	pi.on("session_shutdown", () => {
+		clearCompletionTimer();
+		void clearCmuxStatus();
 	});
 }
 
-type CmuxNotification = {
+type CmuxTarget = {
+	readonly workspaceId?: string;
+	readonly surfaceId?: string;
+};
+
+type CmuxNotification = CmuxTarget & {
 	readonly title: string;
 	readonly subtitle?: string;
 	readonly body: string;
 };
 
 type FocusState = "focused" | "unfocused" | "unknown";
+type CmuxStatus = "working" | "idle";
 
 type CmuxResponse =
 	| { readonly ok: true; readonly result: unknown }
@@ -55,6 +90,7 @@ function buildNotification(pi: ExtensionAPI, ctx: ExtensionContext, durationMs: 
 	const sessionName = pi.getSessionName();
 	const cwdName = path.basename(ctx.cwd) || ctx.cwd;
 	return {
+		...getCmuxTarget(),
 		title: "Pi done",
 		subtitle: sessionName || undefined,
 		body: `Agent stopped working in ${cwdName} after ${formatDuration(durationMs)}.`,
@@ -98,12 +134,35 @@ async function notifyCmux(notification: CmuxNotification): Promise<boolean> {
 	return notifyViaCli(notification);
 }
 
+async function setCmuxStatus(status: CmuxStatus): Promise<boolean> {
+	const label = status === "working" ? "working" : "idle";
+	const icon = status === "working" ? "hammer" : "circle";
+	const color = status === "working" ? "#ff9500" : "#34c759";
+	try {
+		await execFileAsync("cmux", ["set-status", STATUS_KEY, label, "--icon", icon, "--color", color, ...targetCliArgs(getCmuxTarget())], {
+			timeout: NOTIFY_TIMEOUT_MS,
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function clearCmuxStatus(): Promise<boolean> {
+	try {
+		await execFileAsync("cmux", ["clear-status", STATUS_KEY, ...targetCliArgs(getCmuxTarget())], { timeout: NOTIFY_TIMEOUT_MS });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function notifyViaSocket(notification: CmuxNotification): Promise<boolean> {
-	return (await cmuxRequest("notification.create", notification)).ok;
+	return (await cmuxRequest("notification.create", notificationParams(notification))).ok;
 }
 
 async function notifyViaCli(notification: CmuxNotification): Promise<boolean> {
-	const args = ["notify", "--title", notification.title, "--body", notification.body];
+	const args = ["notify", "--title", notification.title, "--body", notification.body, ...targetCliArgs(notification)];
 	if (notification.subtitle) args.splice(3, 0, "--subtitle", notification.subtitle);
 
 	try {
@@ -130,6 +189,30 @@ async function cmuxRequest(method: string, params: Record<string, unknown>): Pro
 function getSocketPath(): string {
 	const configured = process.env.CMUX_SOCKET_PATH?.trim();
 	return configured || DEFAULT_SOCKET_PATH;
+}
+
+function getCmuxTarget(): CmuxTarget {
+	return {
+		workspaceId: readString(process.env[CMUX_WORKSPACE_ENV]) || undefined,
+		surfaceId: readString(process.env[CMUX_SURFACE_ENV]) || undefined,
+	};
+}
+
+function targetCliArgs(target: CmuxTarget): string[] {
+	const args: string[] = [];
+	if (target.workspaceId) args.push("--workspace", target.workspaceId);
+	if (target.surfaceId) args.push("--surface", target.surfaceId);
+	return args;
+}
+
+function notificationParams(notification: CmuxNotification): Record<string, unknown> {
+	return {
+		title: notification.title,
+		subtitle: notification.subtitle,
+		body: notification.body,
+		workspace_id: notification.workspaceId,
+		surface_id: notification.surfaceId,
+	};
 }
 
 async function isSocket(socketPath: string): Promise<boolean> {
@@ -189,12 +272,6 @@ function formatDuration(durationMs: number): string {
 	const seconds = totalSeconds % 60;
 	if (minutes === 0) return `${seconds}s`;
 	return `${minutes}m ${seconds}s`;
-}
-
-function formatFocusState(focus: FocusState): string {
-	if (focus === "focused") return "focused";
-	if (focus === "unfocused") return "not focused";
-	return "unknown";
 }
 
 function readString(value: unknown): string | null {
