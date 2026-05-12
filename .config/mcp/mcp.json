@@ -17,6 +17,10 @@
       "baseUrl": "https://mcp.figma.com/mcp",
       "auth": "oauth",
       "clientName": "Claude Code"
+    },
+    "44px": {
+      "type": "http",
+      "url": "https://44pixels.gatana-prd.44pixels.io/mcp"
     }
   }
 }
