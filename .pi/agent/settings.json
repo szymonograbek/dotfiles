@@ -3,7 +3,8 @@
   "packages": [
     "npm:@plannotator/pi-extension",
     "npm:pi-web-access",
-    "git:github.com/szymonograbek/pi-claude-bridge"
+    "git:github.com/szymonograbek/pi-claude-bridge",
+    "npm:@walodayeet/hindsight-pi"
   ],
   "defaultProvider": "claude-bridge",
   "defaultModel": "claude-opus-4-7",
