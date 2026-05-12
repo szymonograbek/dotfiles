@@ -37,7 +37,7 @@ interface Config {
 }
 
 interface Message { role: "user" | "assistant"; content: string }
-interface State { missionsSet: Set<string>; lastRetainedTurn: Map<string, number> }
+interface State { missionsSet: Set<string>; lastRetainedTurn: Map<string, number>; injectedMemoryIds: Map<string, Set<string>> }
 
 const defaults: Config = {
   autoRecall: true,
@@ -69,7 +69,7 @@ const defaults: Config = {
   verbose: false,
 };
 
-const state: State = { missionsSet: new Set(), lastRetainedTurn: new Map() };
+const state: State = { missionsSet: new Set(), lastRetainedTurn: new Map(), injectedMemoryIds: new Map() };
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -131,9 +131,18 @@ export default function (pi: ExtensionAPI) {
     const query = truncateRecallQuery(composeRecallQuery(event.prompt, history, config.recallContextTurns), event.prompt, config.recallMaxQueryChars);
     const results = await recall(client, bankId, config, query);
     if (!results.length) return;
-    const formatted = formatMemories(results);
-    ctx.ui.notify(`Hindsight recalled ${pluralize(results.length, "memory", "memories")} from ${bankId}.`, "info");
-    verboseLog(config, `Recalled ${pluralize(results.length, "memory", "memories")} from ${bankId}:\n${formatted}`);
+    const sessionId = ctx.sessionManager.getSessionFile() || "ephemeral";
+    const seen = state.injectedMemoryIds.get(sessionId) ?? new Set<string>();
+    const fresh = results.filter((r) => !seen.has(r.id));
+    if (!fresh.length) {
+      verboseLog(config, `Recall returned ${results.length} memories; all already injected this session, skipping.`);
+      return;
+    }
+    for (const r of fresh) seen.add(r.id);
+    state.injectedMemoryIds.set(sessionId, seen);
+    const formatted = formatMemories(fresh);
+    ctx.ui.notify(`Hindsight recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}.`, "info");
+    verboseLog(config, `Recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId} (${results.length - fresh.length} deduped):\n${formatted}`);
     return { systemPrompt: `${event.systemPrompt}\n\n<hindsight_memories>\n${config.recallPromptPreamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formatted}\n</hindsight_memories>` };
   });
 
