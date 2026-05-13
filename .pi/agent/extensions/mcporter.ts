@@ -19,7 +19,7 @@ const McpSearchParams = Type.Object({
 const McpInspectParams = Type.Object({
 	target: Type.String({
 		description:
-			"Server, tool selector, or resource server. Examples: 'atlassian', '44px.github_get_issue'.",
+			"Server, tool selector, or resource server. Examples: 'atlassian', 'org.github_get_issue'.",
 	}),
 	mode: Type.Optional(
 		Type.String({
