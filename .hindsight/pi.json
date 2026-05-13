@@ -3,8 +3,11 @@
   "autoRecall": true,
   "autoRetain": true,
   "recallBudget": "mid",
-  "recallMaxTokens": 512,
+  "recallMaxTokens": 300,
   "retainEveryNTurns": 3,
   "dynamicBankId": true,
-  "dynamicBankGranularity": ["agent", "gitProject"]
+  "dynamicBankGranularity": [
+    "agent",
+    "gitProject"
+  ]
 }
