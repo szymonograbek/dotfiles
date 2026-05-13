@@ -14,11 +14,13 @@ const STATUS_KEY = "pi";
 const IDLE_SETTLE_MS = 1_500;
 const CMUX_WORKSPACE_ENV = "CMUX_WORKSPACE_ID";
 const CMUX_SURFACE_ENV = "CMUX_SURFACE_ID";
+const TAB_TITLE_MAX_LENGTH = 40;
 
 export default function cmuxExtension(pi: ExtensionAPI) {
 	let startedAt: number | undefined;
 	let runId = 0;
 	let completionTimer: ReturnType<typeof setTimeout> | undefined;
+	let tabRenamed = false;
 
 	const clearCompletionTimer = () => {
 		if (!completionTimer) return;
@@ -46,7 +48,16 @@ export default function cmuxExtension(pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", () => {
+		tabRenamed = false;
 		void setCmuxStatus("idle");
+	});
+
+	pi.on("before_agent_start", (event) => {
+		if (tabRenamed) return;
+		const title = formatTabTitle(event.prompt);
+		if (!title) return;
+		tabRenamed = true;
+		void renameCmuxTab(title);
 	});
 
 	pi.on("agent_start", () => {
@@ -65,7 +76,33 @@ export default function cmuxExtension(pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => {
 		clearCompletionTimer();
 		void clearCmuxStatus();
+		void clearCmuxTabName();
 	});
+}
+
+function formatTabTitle(prompt: string): string | null {
+	const collapsed = prompt.replace(/\s+/g, " ").trim();
+	if (!collapsed) return null;
+	if (collapsed.length <= TAB_TITLE_MAX_LENGTH) return collapsed;
+	return `${collapsed.slice(0, TAB_TITLE_MAX_LENGTH - 1).trimEnd()}\u2026`;
+}
+
+async function renameCmuxTab(title: string): Promise<boolean> {
+	return (await cmuxRequest("tab.action", tabActionParams("rename", title))).ok;
+}
+
+async function clearCmuxTabName(): Promise<boolean> {
+	return (await cmuxRequest("tab.action", tabActionParams("clear-name"))).ok;
+}
+
+function tabActionParams(action: "rename" | "clear-name", title?: string): Record<string, unknown> {
+	const target = getCmuxTarget();
+	return {
+		action,
+		title,
+		workspace: target.workspaceId,
+		surface: target.surfaceId,
+	};
 }
 
 type CmuxTarget = {
