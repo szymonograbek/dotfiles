@@ -6,9 +6,16 @@
       "include": [
         { "kind": "agentsMd" },
         { "kind": "skills" },
-        { "kind": "xmlTag", "tag": "mcporter" },
-        { "kind": "xmlTag", "tag": "hindsight_memories" }
+        { "kind": "xmlTag", "tag": "mcporter" }
       ]
+    },
+    "dynamicContext": {
+      "enabled": true,
+      "match": {
+        "details": { "dynamicContext": true }
+      },
+      "stripFromSession": true,
+      "wrapUserRequestTag": "user_request"
     }
   },
   "askClaude": {
@@ -16,8 +23,7 @@
       "mode": "selected",
       "include": [
         { "kind": "skills" },
-        { "kind": "xmlTag", "tag": "mcporter" },
-        { "kind": "xmlTag", "tag": "hindsight_memories" }
+        { "kind": "xmlTag", "tag": "mcporter" }
       ]
     }
   }

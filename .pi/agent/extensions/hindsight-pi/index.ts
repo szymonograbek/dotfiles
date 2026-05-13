@@ -37,7 +37,7 @@ interface Config {
 }
 
 interface Message { role: "user" | "assistant"; content: string }
-interface State { missionsSet: Set<string>; lastRetainedTurn: Map<string, number>; injectedMemoryIds: Map<string, Set<string>> }
+interface State { missionsSet: Set<string>; lastRetainedTurn: Map<string, number>; injectedMemoryIds: Map<string, Set<string>>; pendingRecallContext: Map<string, string> }
 
 const defaults: Config = {
   autoRecall: true,
@@ -69,7 +69,7 @@ const defaults: Config = {
   verbose: false,
 };
 
-const state: State = { missionsSet: new Set(), lastRetainedTurn: new Map(), injectedMemoryIds: new Map() };
+const state: State = { missionsSet: new Set(), lastRetainedTurn: new Map(), injectedMemoryIds: new Map(), pendingRecallContext: new Map() };
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -145,7 +145,26 @@ export default function (pi: ExtensionAPI) {
     const dedupSuffix = dedupedCount > 0 ? ` (${dedupedCount} deduped)` : "";
     ctx.ui.notify(`Hindsight recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}${dedupSuffix}.`, "info");
     verboseLog(config, `Recalled ${pluralize(fresh.length, "memory", "memories")} from ${bankId}${dedupSuffix}:\n${formatted}`);
-    return { systemPrompt: `${event.systemPrompt}\n\n<hindsight_memories>\n${config.recallPromptPreamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formatted}\n</hindsight_memories>` };
+    state.pendingRecallContext.set(sessionId, `<hindsight_memories>\n${config.recallPromptPreamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formatted}\n</hindsight_memories>`);
+  });
+
+  pi.on("context", (event, ctx) => {
+    const sessionId = ctx.sessionManager.getSessionFile() || "ephemeral";
+    const contextText = state.pendingRecallContext.get(sessionId);
+    if (!contextText) return;
+    const lastUserIndex = event.messages.map((message) => message.role).lastIndexOf("user");
+    if (lastUserIndex === -1) return;
+    state.pendingRecallContext.delete(sessionId);
+    const messages = [...event.messages];
+    messages.splice(lastUserIndex, 0, {
+      role: "custom",
+      customType: "hindsight-context",
+      content: contextText,
+      display: false,
+      details: { dynamicContext: true, source: "hindsight" },
+      timestamp: Date.now(),
+    });
+    return { messages };
   });
 
   pi.on("agent_end", async (_event, ctx) => {

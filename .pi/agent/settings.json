@@ -5,8 +5,8 @@
     "npm:pi-web-access",
     "git:github.com/szymonograbek/pi-claude-bridge@main"
   ],
-  "defaultProvider": "claude-bridge",
-  "defaultModel": "claude-sonnet-4-6",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "medium",
   "compaction": {
     "enabled": false
