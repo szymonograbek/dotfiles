@@ -73,10 +73,9 @@ export default function cmuxExtension(pi: ExtensionAPI) {
 		scheduleCompletion(ctx, durationMs, runId);
 	});
 
-	pi.on("session_shutdown", () => {
+	pi.on("session_shutdown", async () => {
 		clearCompletionTimer();
-		void clearCmuxStatus();
-		void clearCmuxTabName();
+		await Promise.all([clearCmuxStatus(), clearCmuxTabName()]);
 	});
 }
 

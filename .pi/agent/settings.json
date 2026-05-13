@@ -6,7 +6,7 @@
     "git:github.com/szymonograbek/pi-claude-bridge@main"
   ],
   "defaultProvider": "claude-bridge",
-  "defaultModel": "claude-opus-4-7",
+  "defaultModel": "claude-sonnet-4-6",
   "defaultThinkingLevel": "medium",
   "compaction": {
     "enabled": false
