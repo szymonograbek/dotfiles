@@ -157,6 +157,15 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (!config.autoRetain) return;
+    const retained = await retainSession(client, bankId, config, state, ctx, true, true);
+    if (retained) {
+      ctx.ui.notify(`Hindsight retained ${pluralize(retained.messageCount, "message")} on session shutdown.`, "info");
+      verboseLog(config, `Retained ${pluralize(retained.messageCount, "message")} on session shutdown to ${bankId}:\n${retained.transcript}`);
+    }
+  });
+
   // NOTE: upstream OpenCode plugin also injects recalled memories into the
   // compaction context via output.context.push(). Pi's session_before_compact
   // can only replace the whole compaction (summary + firstKeptEntryId), so we
@@ -240,11 +249,12 @@ async function recall(client: HindsightClient, bankId: string, config: Config, q
   return response.results || [];
 }
 
-async function retainSession(client: HindsightClient, bankId: string, config: Config, state: State, ctx: ExtensionContext, force = false): Promise<{ messageCount: number; transcript: string } | null> {
+async function retainSession(client: HindsightClient, bankId: string, config: Config, state: State, ctx: ExtensionContext, force = false, skipIfAlreadyCurrentTurn = false): Promise<{ messageCount: number; transcript: string } | null> {
   const sessionId = ctx.sessionManager.getSessionFile() || "ephemeral";
   const messages = messagesFromEntries(ctx.sessionManager.getBranch());
   const userTurns = messages.filter((message) => message.role === "user").length;
   const lastRetained = state.lastRetainedTurn.get(sessionId) ?? 0;
+  if (skipIfAlreadyCurrentTurn && lastRetained === userTurns) return null;
   if (!force && userTurns - lastRetained < config.retainEveryNTurns) return null;
   const retainFullWindow = config.retainMode === "full-session";
   const windowTurns = retainFullWindow ? Number.MAX_SAFE_INTEGER : config.retainEveryNTurns + config.retainOverlapTurns;
