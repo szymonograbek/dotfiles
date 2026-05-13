@@ -4,15 +4,20 @@
     "systemPromptForwarding": {
       "mode": "selected",
       "include": [
-        { "kind": "agentsMd" },
-        { "kind": "skills" },
-        { "kind": "xmlTag", "tag": "mcporter" }
+        {
+          "kind": "agentsMd"
+        },
+        {
+          "kind": "skills"
+        }
       ]
     },
     "dynamicContext": {
       "enabled": true,
       "match": {
-        "details": { "dynamicContext": true }
+        "details": {
+          "dynamicContext": true
+        }
       },
       "stripFromSession": true,
       "wrapUserRequestTag": "user_request"
@@ -22,8 +27,9 @@
     "systemPromptForwarding": {
       "mode": "selected",
       "include": [
-        { "kind": "skills" },
-        { "kind": "xmlTag", "tag": "mcporter" }
+        {
+          "kind": "skills"
+        }
       ]
     }
   }
