@@ -5,9 +5,9 @@
     "npm:pi-web-access",
     "git:github.com/szymonograbek/pi-claude-bridge@main"
   ],
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "low",
+  "defaultProvider": "claude-bridge",
+  "defaultModel": "claude-sonnet-4-6",
+  "defaultThinkingLevel": "medium",
   "compaction": {
     "enabled": false
   },
@@ -17,5 +17,8 @@
     "openai-codex/gpt-5.5",
     "claude-bridge/claude-sonnet-4-6",
     "claude-bridge/claude-opus-4-7"
+  ],
+  "extensions": [
+    "-extensions/hindsight-pi/index.ts"
   ]
 }

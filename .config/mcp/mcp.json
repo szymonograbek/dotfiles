@@ -1,16 +1,8 @@
 {
   "mcpServers": {
-    "effect-docs": {
-      "command": "npx",
-      "args": ["-y", "effect-mcp@latest"]
-    },
     "sentry": {
       "type": "http",
       "url": "https://mcp.sentry.dev/mcp"
-    },
-    "atlassian": {
-      "type": "http",
-      "url": "https://mcp.atlassian.com/v1/mcp"
     },
     "figma": {
       "description": "Figma MCP for design context, components, and variables.",
@@ -21,6 +13,16 @@
     "44px": {
       "type": "http",
       "url": "https://44pixels.gatana-prd.44pixels.io/mcp"
+    },
+    "ios-simulator": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "ios-simulator-mcp"
+      ]
+    },
+    "rive": {
+      "url": "http://localhost:9791/sse"
     }
   }
 }

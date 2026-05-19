@@ -10,8 +10,9 @@ auto-local-bookmark = false
 log = '''
   trunk()
   | (trunk()..@)::
-  | (trunk().. & ::heads(bookmarks() ~ trunk()))
-'''
+  | heads(remote_bookmarks().. & mine())
+  | bookmarks() ~ bookmarks(exact:"master") ~ bookmarks(exact:"main")
+  | tracked_remote_bookmarks(remote="origin") ~ bookmarks(exact:"master") ~ bookmarks(exact:"main")'''
 
 [[--scope]]
 --when.repositories = ["~/dev/Karen"]
