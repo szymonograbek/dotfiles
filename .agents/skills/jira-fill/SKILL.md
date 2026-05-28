@@ -3,7 +3,7 @@ name: jira-fill
 description: Fill the fields of a JIRA workitem (ticket)
 ---
 
-Use JIRA MCP. Your job is to fill in whatever user requested. JIRA is mostly for non-technical people, so skip implementation details and focus on:
+Load and follow the `jira-api` skill (`/Users/szymonograbek/.agents/skills/jira-api/SKILL.md`) to make all Jira API calls. Your job is to fill in whatever user requested. JIRA is mostly for non-technical people, so skip implementation details and focus on:
 - What needs to be changed
 - Acceptance criteria
 - Testing steps
