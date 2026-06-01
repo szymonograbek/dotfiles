@@ -13,10 +13,8 @@ function dotuntracked --description 'List files in a directory not tracked by do
         return 2
     end
 
-    begin
-        cd $HOME
-        dotfiles ls-files --others --exclude-standard -- "$abs_dir"
-    end \
+    /usr/bin/git -C $HOME --git-dir=$HOME/.dotfiles/ --work-tree=$HOME \
+        ls-files --others --exclude-standard -- "$abs_dir" \
         | sed "s|^|$HOME/|" \
         | sort
 end
