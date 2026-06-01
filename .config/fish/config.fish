@@ -17,6 +17,9 @@ set -gx EDITOR 'nvim'
 # Set neovim as the program to open manpages
 set -gx MANPAGER 'nvim +Man!'
 
+# Load secrets from macOS Keychain
+keychain-env KAGI_API_KEY >/dev/null
+
 direnv hook fish | source
 
 # BEGIN opam configuration

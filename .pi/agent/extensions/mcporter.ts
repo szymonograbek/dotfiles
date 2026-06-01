@@ -4,14 +4,23 @@ import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
+
 const MCPORTER_TIMEOUT_MS = 30_000;
-const MCPORTER_MAX_BUFFER = 1024 * 1024;
+const MCPORTER_MAX_BUFFER = 64 * 1024 * 1024;
+const DEFAULT_SEARCH_LIMIT = 30;
+const MAX_SEARCH_LIMIT = 100;
+const MAX_INSPECT_CHARS = 24_000;
 
 const McpSearchParams = Type.Object({
 	query: Type.Optional(
 		Type.String({
 			description:
-				"Case-insensitive capability/tool search. Omit to list available MCP servers.",
+				"Search MCP servers/tools by capability, name, description, or parameter. Omit to list servers.",
+		}),
+	),
+	limit: Type.Optional(
+		Type.Number({
+			description: `Maximum matches to return. Defaults to ${DEFAULT_SEARCH_LIMIT}, max ${MAX_SEARCH_LIMIT}.`,
 		}),
 	),
 });
@@ -22,51 +31,59 @@ const McpInspectParams = Type.Object({
 			"Server, tool selector, or resource server. Examples: 'atlassian', 'org.github_get_issue'.",
 	}),
 	mode: Type.Optional(
-		Type.String({
-			description: "One of: schema (default), brief, list, resource.",
-		}),
+		Type.String({ description: "One of: schema (default), brief, list, resource." }),
 	),
-	uri: Type.Optional(
-		Type.String({
-			description: "Resource URI/path for mode=resource.",
-		}),
-	),
+	uri: Type.Optional(Type.String({ description: "Resource URI/path for mode=resource." })),
 });
 
 const McpCallParams = Type.Object({
-	tool: Type.String({
-		description: "Tool selector to call, e.g. 'server.tool_name'.",
-	}),
+	tool: Type.String({ description: "Tool selector to call, e.g. 'server.tool_name'." }),
 	params: Type.Optional(
-		Type.Array(
-			Type.String({
-				description: "mcporter CLI argument in key=value form.",
-			}),
-			{
-				description:
-					"Arguments passed to mcporter call as key=value strings. Use JSON strings for structured values if the target tool expects them.",
-			},
-		),
+		Type.Array(Type.String({ description: "mcporter CLI argument in key=value form." }), {
+			description:
+				"Arguments passed to mcporter call as key=value strings. Use JSON strings for structured values if the target tool expects them.",
+		}),
 	),
 });
 
-type McporterResult = {
-	readonly stdout: string;
-	readonly stderr: string;
+type McporterResult = { readonly stdout: string; readonly stderr: string };
+type ToolSummary = {
+	readonly server: string;
+	readonly name: string;
+	readonly description?: string;
+	readonly inputSchemaText?: string;
+};
+type MatchedField = "name" | "description" | "params";
+type ScoredTool = {
+	readonly tool: ToolSummary;
+	readonly score: number;
+	readonly matchedFields: readonly MatchedField[];
 };
 
-function readStringProperty(value: unknown, property: string): string | undefined {
-	if (typeof value !== "object" || value === null || !(property in value)) return undefined;
-	const record: Record<string, unknown> = value;
-	const field = record[property];
-	return typeof field === "string" ? field : undefined;
+type FieldScores = { readonly name: number; readonly description: number; readonly params: number };
+
+const normalize = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const tokensOf = (text: string): string[] => normalize(text).split(/\s+/).filter(Boolean);
+const clampLimit = (limit: number | undefined): number =>
+	typeof limit === "number" && Number.isFinite(limit)
+		? Math.max(1, Math.min(MAX_SEARCH_LIMIT, Math.floor(limit)))
+		: DEFAULT_SEARCH_LIMIT;
+
+function property(value: unknown, key: string): unknown {
+	return typeof value === "object" && value !== null
+		? Object.getOwnPropertyDescriptor(value, key)?.value
+		: undefined;
 }
 
-function getErrorText(error: unknown): string {
-	const stderr = readStringProperty(error, "stderr");
-	const stdout = readStringProperty(error, "stdout");
+function stringProperty(value: unknown, key: string): string | undefined {
+	const found = property(value, key);
+	return typeof found === "string" ? found : undefined;
+}
+
+function errorText(error: unknown): string {
+	const parts = [stringProperty(error, "stdout"), stringProperty(error, "stderr")];
 	const message = error instanceof Error ? error.message : "unknown error";
-	return [stdout, stderr, message].filter((part) => part && part.trim()).join("\n");
+	return [...parts, message].filter((part) => typeof part === "string" && part.trim().length > 0).join("\n");
 }
 
 async function runMcporter(args: readonly string[]): Promise<McporterResult> {
@@ -77,71 +94,207 @@ async function runMcporter(args: readonly string[]): Promise<McporterResult> {
 		});
 		return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 	} catch (error) {
-		throw new Error(getErrorText(error));
+		throw new Error(errorText(error));
 	}
 }
 
-async function mcporterList(): Promise<string> {
+function toolResult(text: string, details: unknown) {
+	return { content: [{ type: "text", text }], details };
+}
+
+function truncate(text: string, maxChars: number): string {
+	return text.length <= maxChars
+		? text
+		: `${text.slice(0, maxChars)}\n\n…truncated ${text.length - maxChars} chars. Narrow the search or inspect a specific tool.`;
+}
+
+async function listServersText(): Promise<string> {
 	try {
-		const result = await runMcporter(["list"]);
-		return result.stdout;
+		return (await runMcporter(["list"])).stdout;
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "unknown error";
-		return `mcporter list failed: ${message}`;
+		return `mcporter list failed: ${error instanceof Error ? error.message : "unknown error"}`;
 	}
 }
 
-function parseServerNames(listOutput: string): string[] {
+function serverNames(listOutput: string): string[] {
 	return listOutput
 		.split("\n")
 		.map((line) => /^-\s+([^\s(]+)/.exec(line)?.[1])
-		.filter((name) => typeof name === "string");
+		.filter((name): name is string => typeof name === "string");
 }
 
-function formatToolResult(text: string, details: unknown) {
+function parseToolsJson(server: string, json: string): ToolSummary[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(json);
+	} catch {
+		return [];
+	}
+	const tools = property(parsed, "tools");
+	return Array.isArray(tools)
+		? tools.flatMap((tool) => {
+				const name = stringProperty(tool, "name");
+				if (typeof name !== "string") return [];
+				const description = stringProperty(tool, "description");
+				const inputSchema = property(tool, "inputSchema");
+				return [
+					{
+						server,
+						name,
+						description,
+						inputSchemaText: typeof inputSchema === "undefined" ? undefined : JSON.stringify(inputSchema),
+					},
+				];
+			})
+		: [];
+}
+
+function parseToolsBrief(server: string, brief: string): ToolSummary[] {
+	return brief.split("\n").flatMap((line) => {
+		const match = /^\s*function\s+([^\s(]+)\((.*)\);/.exec(line);
+		return match ? [{ server, name: match[1], inputSchemaText: match[2] }] : [];
+	});
+}
+
+async function listServerTools(server: string): Promise<ToolSummary[]> {
+	try {
+		return parseToolsJson(server, (await runMcporter(["list", server, "--json"])).stdout);
+	} catch {
+		try {
+			return parseToolsBrief(server, (await runMcporter(["list", server, "--brief"])).stdout);
+		} catch {
+			return [];
+		}
+	}
+}
+
+function tokenScore(fields: FieldScores): number {
+	return Math.max(fields.name, fields.description, fields.params);
+}
+
+function matchedFields(fields: FieldScores): MatchedField[] {
+	return [
+		...(fields.name > 0 ? ["name"] : []),
+		...(fields.description > 0 ? ["description"] : []),
+		...(fields.params > 0 ? ["params"] : []),
+	];
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+	return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function isSubsequence(needle: string, haystack: string): boolean {
+	const chars = [...haystack];
+	return [...needle].every((char) => {
+		const index = chars.indexOf(char);
+		if (index < 0) return false;
+		chars.splice(0, index + 1);
+		return true;
+	});
+}
+
+function tokenMatchesWord(queryToken: string, word: string): boolean {
+	if (word.includes(queryToken) || queryToken.includes(word)) return true;
+	const shorter = queryToken.length <= word.length ? queryToken : word;
+	const longer = queryToken.length <= word.length ? word : queryToken;
+	return shorter.length >= 3 && shorter[0] === longer[0] && isSubsequence(shorter, longer);
+}
+
+function includesToken(text: string, token: string): boolean {
+	return tokensOf(text).some((word) => tokenMatchesWord(token, word));
+}
+
+function fieldScores(token: string, tool: ToolSummary): FieldScores {
+	const name = normalize(`${tool.server} ${tool.name}`);
+	const description = normalize(tool.description ?? "");
+	const params = normalize(tool.inputSchemaText ?? "");
 	return {
-		content: [{ type: "text", text }],
-		details,
+		name: includesToken(name, token) ? 100 : 0,
+		description: includesToken(description, token) ? 30 : 0,
+		params: includesToken(params, token) ? 5 : 0,
 	};
 }
 
-async function searchMcporter(query: string | undefined): Promise<string> {
-	const list = await mcporterList();
-	const normalizedQuery = query?.trim().toLowerCase();
-	if (!normalizedQuery) return list;
+function uniqueFields(fields: readonly MatchedField[]): readonly MatchedField[] {
+	return fields.filter((field, index) => fields.indexOf(field) === index);
+}
 
-	const serverNames = parseServerNames(list);
-	const sections = await Promise.all(
-		serverNames.map(async (serverName) => {
-			try {
-				const result = await runMcporter(["list", serverName, "--brief"]);
-				const matches = result.stdout
-					.split("\n")
-					.filter((line) => line.toLowerCase().includes(normalizedQuery));
-				return matches.length > 0 ? `## ${serverName}\n${matches.join("\n")}` : "";
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "unknown error";
-				return serverName.toLowerCase().includes(normalizedQuery)
-					? `## ${serverName}\n${message}`
-					: "";
-			}
-		}),
-	);
+function scoreTool(queryTokens: readonly string[], tool: ToolSummary): ScoredTool | undefined {
+	const fieldMatches = queryTokens.map((token) => fieldScores(token, tool));
+	const scores = fieldMatches.map(tokenScore);
+	if (!scores.every((score) => score > 0)) return undefined;
+	const strongMatches = fieldMatches.filter((fields) => fields.name > 0 || fields.description > 0).length;
+	const score = strongMatches * 1_000 + scores.reduce((total, score) => total + score, 0);
+	return {
+		tool,
+		score,
+		matchedFields: uniqueFields(fieldMatches.flatMap(matchedFields)),
+	};
+}
 
-	const matches = sections.filter((section) => section.length > 0);
-	if (matches.length === 0) return `No mcporter tools matched '${query}'.\n\nServers:\n${list}`;
-	return matches.join("\n\n");
+function firstLine(text: string | undefined): string | undefined {
+	return text?.split("\n").find((line) => line.trim().length > 0)?.trim();
+}
+
+function formatMatch({ tool, matchedFields }: ScoredTool): string {
+	const description = firstLine(tool.description);
+	const matchText = ` _(matched: ${matchedFields.join(", ")})_`;
+	return description ? `- ${tool.name}${matchText}: ${description}` : `- ${tool.name}${matchText}`;
+}
+
+function groupByServer(matches: readonly ScoredTool[]): string {
+	const grouped = matches.reduce<Map<string, string[]>>((acc, match) => {
+		acc.set(match.tool.server, [...(acc.get(match.tool.server) ?? []), formatMatch(match)]);
+		return acc;
+	}, new Map());
+	return Array.from(grouped.entries())
+		.map(([server, lines]) => `## ${server}\n${lines.join("\n")}`)
+		.join("\n\n");
+}
+
+async function searchMcporter(query: string | undefined, requestedLimit: number | undefined): Promise<string> {
+	const list = await listServersText();
+	const queryTokens = tokensOf(query ?? "");
+	if (queryTokens.length === 0) {
+		return `${list}\n\nTip: call mcp_search with capability words to search tool names, descriptions, and parameters.`;
+	}
+
+	const tools = (await Promise.all(serverNames(list).map(listServerTools))).flat();
+	const matches = tools
+		.flatMap((tool) => scoreTool(queryTokens, tool) ?? [])
+		.sort((left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name));
+	const shown = matches.slice(0, clampLimit(requestedLimit));
+
+	if (shown.length === 0) {
+		return `No mcporter tools matched '${query}'. Every query word must fuzzy-match the tool name, description, or parameters. Try fewer words.\n\nServers:\n${list}`;
+	}
+
+	const suffix = matches.length > shown.length ? `\n\nShowing top ${shown.length} of ${matches.length} matches. Narrow the query for a better result.` : "";
+	return `${groupByServer(shown)}${suffix}`;
 }
 
 function inspectArgs(target: string, mode: string | undefined, uri: string | undefined): string[] {
 	const normalizedMode = mode?.trim().toLowerCase() || "schema";
-	if (normalizedMode === "schema") return ["list", target, "--schema"];
 	if (normalizedMode === "brief") return ["list", target, "--brief"];
 	if (normalizedMode === "list") return ["list", target];
-	if (normalizedMode === "resource") {
-		return uri ? ["resource", target, uri] : ["resource", target];
-	}
+	if (normalizedMode === "resource") return uri ? ["resource", target, uri] : ["resource", target];
 	return ["list", target, "--schema"];
+}
+
+function isBroadServerInspect(target: string, mode: string | undefined): boolean {
+	return (mode?.trim().toLowerCase() || "schema") === "schema" && !target.includes(".");
+}
+
+async function runTool(args: readonly string[]): Promise<ReturnType<typeof toolResult>> {
+	try {
+		const result = await runMcporter(args);
+		const text = result.stderr ? `${result.stdout}\n\nstderr:\n${result.stderr}` : result.stdout;
+		return toolResult(text, { args });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "unknown error";
+		return toolResult(`Error: ${message}`, { args, error: message });
+	}
 }
 
 export default function (pi: ExtensionAPI) {
@@ -149,11 +302,13 @@ export default function (pi: ExtensionAPI) {
 		name: "mcp_search",
 		label: "MCP Search",
 		description:
-			"Search mcporter MCP servers and brief tool lists. Use before concluding a capability is unavailable.",
+			"Search mcporter MCP servers. Every query word must fuzzy-match a tool name, description, or parameter.",
 		parameters: McpSearchParams,
 		async execute(_toolCallId, params) {
-			const text = await searchMcporter(params.query);
-			return formatToolResult(text, { query: params.query });
+			return toolResult(await searchMcporter(params.query, params.limit), {
+				query: params.query,
+				limit: params.limit,
+			});
 		},
 	});
 
@@ -161,18 +316,19 @@ export default function (pi: ExtensionAPI) {
 		name: "mcp_inspect",
 		label: "MCP Inspect",
 		description:
-			"Inspect an MCP server/tool/resource through mcporter. Gets schemas by default; use brief/list/resource modes when needed.",
+			"Inspect a specific MCP server/tool/resource through mcporter. Prefer a tool selector for schemas; broad server output is truncated.",
 		parameters: McpInspectParams,
 		async execute(_toolCallId, params) {
-			const args = inspectArgs(params.target, params.mode, params.uri);
-			try {
-				const result = await runMcporter(args);
-				const text = result.stderr ? `${result.stdout}\n\nstderr:\n${result.stderr}` : result.stdout;
-				return formatToolResult(text, { args });
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "unknown error";
-				return formatToolResult(`Error: ${message}`, { args, error: message });
+			if (isBroadServerInspect(params.target, params.mode)) {
+				return toolResult(
+					`Refusing broad schema dump for server '${params.target}' because it can consume too much context. Use mcp_search, then inspect a specific tool selector like '${params.target}.tool_name'.`,
+					{ target: params.target, mode: params.mode },
+				);
 			}
+			const args = inspectArgs(params.target, params.mode, params.uri);
+			const result = await runTool(args);
+			const text = result.content[0]?.text;
+			return typeof text === "string" ? toolResult(truncate(text, MAX_INSPECT_CHARS), result.details) : result;
 		},
 	});
 
@@ -183,16 +339,7 @@ export default function (pi: ExtensionAPI) {
 			"Call an MCP tool through mcporter with key=value params. Inspect the tool schema first when arguments are unknown.",
 		parameters: McpCallParams,
 		async execute(_toolCallId, params) {
-			const args = ["call", params.tool, ...(params.params ?? [])];
-			try {
-				const result = await runMcporter(args);
-				const text = result.stderr ? `${result.stdout}\n\nstderr:\n${result.stderr}` : result.stdout;
-				return formatToolResult(text, { args });
-			} catch (error) {
-				const message = error instanceof Error ? error.message : "unknown error";
-				return formatToolResult(`Error: ${message}`, { args, error: message });
-			}
+			return runTool(["call", params.tool, ...(params.params ?? [])]);
 		},
 	});
-
 }

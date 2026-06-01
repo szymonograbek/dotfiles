@@ -13,7 +13,10 @@ function dotuntracked --description 'List files in a directory not tracked by do
         return 2
     end
 
-    comm -23 \
-        (find "$abs_dir" -type f | sort | psub) \
-        (dotfiles ls-files --full-name "$abs_dir" | sed "s|^|$HOME/|" | sort | psub)
+    begin
+        cd $HOME
+        dotfiles ls-files --others --exclude-standard -- "$abs_dir"
+    end \
+        | sed "s|^|$HOME/|" \
+        | sort
 end

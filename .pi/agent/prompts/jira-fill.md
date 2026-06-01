@@ -5,7 +5,7 @@ argument-hint: "<JIRA-KEY or instructions>"
 
 Fill the Jira work item fields requested by the user: `$ARGUMENTS`.
 
-Load and follow `/Users/szymonograbek/.agents/skills/jira-api/SKILL.md` for all Jira API calls.
+Load and follow the `jira-api` skill for all Jira API calls.
 
 Jira is mostly for non-technical people, so skip implementation details and focus on:
 - What needs to be changed

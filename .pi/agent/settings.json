@@ -1,12 +1,12 @@
 {
-  "lastChangelogVersion": "0.75.5",
+  "lastChangelogVersion": "0.78.0",
   "packages": [
     "npm:@plannotator/pi-extension",
-    "npm:pi-web-access"
+    "npm:pi-rewind"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "low",
+  "defaultThinkingLevel": "minimal",
   "compaction": {
     "enabled": false
   },

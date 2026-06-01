@@ -4,7 +4,7 @@ description: Create or Update Pull Request on Github
 ---
 
 Make sure whether the PR already exists, if it does go straight to updating the description.
-Using Github CLI create a pull request to either base branch or to branch provided by the user.
+Use `gh` (GitHub CLI) to create or manage pull requests, targeting either the base branch or a branch provided by the user.
 Assign me to Pull Request (current user).
 Always add concise PR description with sections:
 - What (What was added)
