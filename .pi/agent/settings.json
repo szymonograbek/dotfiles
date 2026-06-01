@@ -1,12 +1,21 @@
 {
   "lastChangelogVersion": "0.78.0",
   "packages": [
-    "npm:@plannotator/pi-extension",
+    {
+      "source": "npm:@plannotator/pi-extension",
+      "skills": [
+        "-skills/plannotator-compound/SKILL.md",
+        "+skills/plannotator-annotate/SKILL.md",
+        "-skills/plannotator-last/SKILL.md",
+        "-skills/plannotator-setup-goal/SKILL.md",
+        "-skills/plannotator-visual-explainer/SKILL.md"
+      ]
+    },
     "npm:pi-rewind"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "minimal",
+  "defaultThinkingLevel": "low",
   "compaction": {
     "enabled": false
   },
