@@ -33,16 +33,16 @@ export default function cmuxExtension(pi: ExtensionAPI) {
 		completionTimer = setTimeout(() => {
 			completionTimer = undefined;
 			if (completedRunId !== runId) return;
-			if (!ctx.isIdle() || ctx.hasPendingMessages()) {
+
+			const state = readAgentState(ctx);
+			if (!state) return;
+			if (!state.idle || state.hasPendingMessages) {
 				scheduleCompletion(ctx, durationMs, completedRunId);
 				return;
 			}
 
 			void setCmuxStatus("idle");
-			void (async () => {
-				if (!(await shouldNotify(durationMs))) return;
-				await notifyCmux(buildNotification(pi, ctx, durationMs));
-			})();
+			void notifyWhenNeeded(pi, ctx, durationMs);
 		}, IDLE_SETTLE_MS);
 		completionTimer.unref?.();
 	};
@@ -109,6 +109,11 @@ type CmuxTarget = {
 	readonly surfaceId?: string;
 };
 
+type AgentState = {
+	readonly idle: boolean;
+	readonly hasPendingMessages: boolean;
+};
+
 type CmuxNotification = CmuxTarget & {
 	readonly title: string;
 	readonly subtitle?: string;
@@ -121,6 +126,26 @@ type CmuxStatus = "working" | "idle";
 type CmuxResponse =
 	| { readonly ok: true; readonly result: unknown }
 	| { readonly ok: false };
+
+function readAgentState(ctx: ExtensionContext): AgentState | null {
+	try {
+		return {
+			idle: ctx.isIdle(),
+			hasPendingMessages: ctx.hasPendingMessages(),
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function notifyWhenNeeded(pi: ExtensionAPI, ctx: ExtensionContext, durationMs: number): Promise<void> {
+	try {
+		if (!(await shouldNotify(durationMs))) return;
+		await notifyCmux(buildNotification(pi, ctx, durationMs));
+	} catch {
+		// Extension contexts can become stale after session replacement/reload.
+	}
+}
 
 function buildNotification(pi: ExtensionAPI, ctx: ExtensionContext, durationMs: number): CmuxNotification {
 	const sessionName = pi.getSessionName();
