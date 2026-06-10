@@ -14,19 +14,12 @@
       "type": "http",
       "url": "https://44pixels.gatana-prd.44pixels.io/mcp"
     },
-    "ios-simulator": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "ios-simulator-mcp"
-      ]
-    },
     "rive": {
       "url": "http://localhost:9791/sse"
     },
-    "atlassian": {
-      "url": "https://mcp.atlassian.com/v1/mcp/authv2",
-      "type": "http"
+    "argent": {
+      "command": "argent",
+      "args": ["mcp"]
     }
   }
 }

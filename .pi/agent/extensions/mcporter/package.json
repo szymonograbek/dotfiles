@@ -1,0 +1,23 @@
+{
+  "name": "pi-mcporter-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pi extension exposing mcporter MCP tools.",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.79.1",
+    "@earendil-works/pi-tui": "^0.79.1",
+    "fuse.js": "^7.4.2",
+    "mcporter": "^0.12.0",
+    "typebox": "^1.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3"
+  }
+}
