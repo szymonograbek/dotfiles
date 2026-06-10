@@ -2,12 +2,20 @@ import Fuse from "fuse.js";
 import { createRuntime } from "mcporter";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	formatSize,
+	truncateHead,
+	type AgentToolResult,
+	type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import type { Runtime } from "mcporter";
 
 const DEFAULT_SEARCH_LIMIT = 30;
 const MAX_SEARCH_LIMIT = 100;
 const MAX_INSPECT_CHARS = 24_000;
+const MAX_INLINE_VALUE_CHARS = 4_096;
 
 const McpSearchParams = Type.Object({
 	query: Type.Optional(
@@ -160,6 +168,62 @@ function stringify(value: unknown): string {
 	} catch {
 		return String(value);
 	}
+}
+
+type PreparedValue = {
+	readonly value: unknown;
+	readonly omittedLargeValues: number;
+};
+
+function prepareToolValue(value: unknown): PreparedValue {
+	if (typeof value === "string" && value.length > MAX_INLINE_VALUE_CHARS) {
+		return {
+			value: `[omitted large value: ${formatSize(Buffer.byteLength(value, "utf8"))}]`,
+			omittedLargeValues: 1,
+		};
+	}
+	if (Array.isArray(value)) {
+		const prepared = value.map(prepareToolValue);
+		return {
+			value: prepared.map((item) => item.value),
+			omittedLargeValues: prepared.reduce((total, item) => total + item.omittedLargeValues, 0),
+		};
+	}
+	if (typeof value === "object" && value !== null) {
+		const prepared = Object.entries(value).map(([key, entry]) => ({ key, prepared: prepareToolValue(entry) }));
+		return {
+			value: prepared.reduce<Record<string, unknown>>(
+				(acc, entry) => ({ ...acc, [entry.key]: entry.prepared.value }),
+				{},
+			),
+			omittedLargeValues: prepared.reduce((total, entry) => total + entry.prepared.omittedLargeValues, 0),
+		};
+	}
+	return { value, omittedLargeValues: 0 };
+}
+
+function stringifyToolOutput(value: unknown): PreparedValue {
+	const prepared = prepareToolValue(value);
+	return { value: stringify(prepared.value), omittedLargeValues: prepared.omittedLargeValues };
+}
+
+function truncateToolOutput(value: unknown): string {
+	const prepared = stringifyToolOutput(value);
+	const content = typeof prepared.value === "string" ? prepared.value : stringify(prepared.value);
+	const truncation = truncateHead(content, {
+		maxBytes: DEFAULT_MAX_BYTES,
+		maxLines: DEFAULT_MAX_LINES,
+	});
+	const notices: string[] = [];
+	if (prepared.omittedLargeValues > 0) {
+		notices.push(`Output truncated because it was too long: omitted ${prepared.omittedLargeValues} large value(s).`);
+	}
+	if (truncation.truncated) {
+		notices.push(
+			`Output truncated because it was too long: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
+		);
+	}
+	return notices.length === 0 ? truncation.content : `${truncation.content}\n\n[${notices.join(" ")}]`;
 }
 
 function errorMessage(error: unknown): string {
@@ -424,7 +488,7 @@ async function callMcporter(tool: string, params: readonly string[]): Promise<Ag
 	const args = parseCallParams(params);
 	try {
 		const result = await (await runtime()).callTool(selector.server, selector.toolName, { args });
-		return toolResult(stringify(result), { tool, server: selector.server, toolName: selector.toolName, args });
+		return toolResult(truncateToolOutput(result), { tool, server: selector.server, toolName: selector.toolName, args });
 	} catch (error) {
 		const message = errorMessage(error);
 		return toolResult(`Error: ${message}`, { tool, args, error: message });
