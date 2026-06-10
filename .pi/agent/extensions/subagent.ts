@@ -6,7 +6,9 @@ import {
 	SessionManager,
 	SettingsManager,
 	type ExtensionAPI,
+	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 
 const TOOL_NAME = "run_subagent";
@@ -44,7 +46,7 @@ const schema = Type.Object({
 	includeContextFiles: Type.Optional(
 		Type.Boolean({ description: "Whether subagents load AGENTS.md and CLAUDE.md context files. Defaults to false." }),
 	),
-	thinkingLevel: Type.Optional(StringEnum(THINKING_LEVELS, { description: "Default thinking level. Defaults to low." })),
+	thinkingLevel: Type.Optional(StringEnum(THINKING_LEVELS, { description: "Default thinking level. Defaults to medium." })),
 	agents: Type.Optional(
 		Type.Array(agentSchema, {
 			description:
@@ -65,25 +67,107 @@ type AgentRequest = {
 	thinkingLevel: ThinkingLevel;
 };
 
+type SubagentDetails = { agents: AgentRequest[] };
+type TextUpdate = { content: Array<{ type: "text"; text: string }>; details: SubagentDetails };
+type UpdateProgress = (index: number, text: string) => void;
+
 type RunAgentArgs = AgentRequest & {
 	index: number;
 	total: number;
 	cwd: string;
+	model: ExtensionContext["model"];
 	signal: AbortSignal | undefined;
-	onUpdate: ((update: { content: Array<{ type: "text"; text: string }> }) => void) | undefined;
+	updateProgress: UpdateProgress;
 };
 
 function sanitizeTools(tools: string[] | undefined): string[] {
-	return (tools ?? DEFAULT_TOOLS).filter((tool) => tool !== TOOL_NAME);
+	const filtered = (tools ?? DEFAULT_TOOLS).filter((tool) => tool !== TOOL_NAME);
+	return filtered.includes("read") ? filtered : ["read", ...filtered];
 }
 
-function latestStatus(index: number, total: number, toolName: string): string {
-	const prefix = total === 1 ? "Subagent" : `Subagent ${index}/${total}`;
-	return `${prefix} using ${toolName}…`;
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function contentText(content: unknown): string {
+	if (!Array.isArray(content)) {
+		return "";
+	}
+
+	return content
+		.flatMap((item) => {
+			if (isRecord(item) && item.type === "text" && typeof item.text === "string") {
+				const text = item.text.trim();
+				return text === "" ? [] : [text];
+			}
+			return [];
+		})
+		.join("\n");
+}
+
+function resultText(result: unknown): string {
+	return isRecord(result) ? contentText(result.content) : "";
+}
+
+function finalResponseFromMessages(messages: readonly unknown[]): string {
+	let latestToolText = "";
+
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		const message = messages[index];
+		if (!isRecord(message)) {
+			continue;
+		}
+
+		const text = contentText(message.content);
+		if (text === "") {
+			continue;
+		}
+
+		if (message.role === "assistant") {
+			return text;
+		}
+		if (message.role === "toolResult" && latestToolText === "") {
+			latestToolText = text;
+		}
+	}
+
+	return latestToolText;
+}
+
+function truncateTask(task: string): string {
+	const singleLine = task.replace(/\s+/g, " ").trim();
+	return singleLine.length > 80 ? `${singleLine.slice(0, 77)}…` : singleLine;
 }
 
 function agentLabel(index: number, total: number): string {
 	return total === 1 ? "Subagent" : `Subagent ${index}/${total}`;
+}
+
+function progressText(index: number, total: number, status: string, task: string): string {
+	return `${agentLabel(index, total)}: ${status} — ${truncateTask(task)}`;
+}
+
+function createProgressReporter(
+	requests: AgentRequest[],
+	onUpdate: ((update: TextUpdate) => void) | undefined,
+): UpdateProgress {
+	const total = requests.length;
+	const statuses = requests.map((request, index) => progressText(index + 1, total, "queued", request.task));
+
+	return (index, text) => {
+		statuses[index - 1] = progressText(index, total, text, requests[index - 1]?.task ?? "");
+		onUpdate?.({ content: [{ type: "text", text: statuses.join("\n") }], details: { agents: requests } });
+	};
+}
+
+function formatAgentParams(agent: AgentRequest): string {
+	return [
+		`allowedTools: ${agent.allowedTools.join(", ") || "none"}`,
+		`includeSkills: ${agent.includeSkills}`,
+		`includeExtensions: ${agent.includeExtensions}`,
+		`includeContextFiles: ${agent.includeContextFiles}`,
+		`thinkingLevel: ${agent.thinkingLevel}`,
+	].join("\n");
 }
 
 function buildRequest(params: SubagentInput, agent: AgentInput): AgentRequest {
@@ -93,7 +177,7 @@ function buildRequest(params: SubagentInput, agent: AgentInput): AgentRequest {
 		includeSkills: agent.includeSkills ?? params.includeSkills ?? true,
 		includeExtensions: agent.includeExtensions ?? params.includeExtensions ?? true,
 		includeContextFiles: agent.includeContextFiles ?? params.includeContextFiles ?? false,
-		thinkingLevel: agent.thinkingLevel ?? params.thinkingLevel ?? "low",
+		thinkingLevel: agent.thinkingLevel ?? params.thinkingLevel ?? "medium",
 	};
 }
 
@@ -113,13 +197,13 @@ function buildRequests(params: SubagentInput): AgentRequest[] {
 			includeSkills: params.includeSkills ?? true,
 			includeExtensions: params.includeExtensions ?? true,
 			includeContextFiles: params.includeContextFiles ?? false,
-			thinkingLevel: params.thinkingLevel ?? "low",
+			thinkingLevel: params.thinkingLevel ?? "medium",
 		},
 	];
 }
 
 async function runAgent(args: RunAgentArgs): Promise<string> {
-	args.onUpdate?.({ content: [{ type: "text", text: `${agentLabel(args.index, args.total)} starting…` }] });
+	args.updateProgress(args.index, "starting");
 
 	const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } });
 	const loader = new DefaultResourceLoader({
@@ -138,6 +222,7 @@ async function runAgent(args: RunAgentArgs): Promise<string> {
 		resourceLoader: loader,
 		settingsManager,
 		sessionManager: SessionManager.inMemory(args.cwd),
+		model: args.model,
 		tools: args.allowedTools,
 		excludeTools: [TOOL_NAME],
 		thinkingLevel: args.thinkingLevel,
@@ -145,6 +230,8 @@ async function runAgent(args: RunAgentArgs): Promise<string> {
 
 	let finalText = "";
 	let currentAssistantText = "";
+	let lastToolText = "";
+	let assistantError = "";
 	const unsubscribe = session.subscribe((event) => {
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			currentAssistantText = "";
@@ -153,10 +240,32 @@ async function runAgent(args: RunAgentArgs): Promise<string> {
 			currentAssistantText += event.assistantMessageEvent.delta;
 		}
 		if (event.type === "message_end" && event.message.role === "assistant") {
-			finalText = currentAssistantText.trim();
+			const text = contentText(event.message.content) || currentAssistantText.trim();
+			if (text !== "") {
+				finalText = text;
+			}
+			if (event.message.stopReason === "error") {
+				assistantError = event.message.errorMessage ?? "Subagent failed without an error message.";
+			}
+		}
+		if (event.type === "message_start" && event.message.role === "assistant") {
+			args.updateProgress(args.index, "thinking");
 		}
 		if (event.type === "tool_execution_start") {
-			args.onUpdate?.({ content: [{ type: "text", text: latestStatus(args.index, args.total, event.toolName) }] });
+			args.updateProgress(args.index, `using ${event.toolName}`);
+		}
+		if (event.type === "tool_execution_end") {
+			const text = resultText(event.result);
+			if (!event.isError && text !== "") {
+				lastToolText = text;
+			}
+			args.updateProgress(args.index, event.isError ? `${event.toolName} failed` : "thinking");
+		}
+		if (event.type === "agent_end") {
+			const text = finalResponseFromMessages(event.messages);
+			if (text !== "") {
+				finalText = text;
+			}
 		}
 	});
 
@@ -167,17 +276,22 @@ async function runAgent(args: RunAgentArgs): Promise<string> {
 
 	try {
 		await session.prompt(args.task, { source: "extension" });
+		finalText = finalText || finalResponseFromMessages(session.messages);
+		args.updateProgress(args.index, "completed");
+	} catch (error) {
+		args.updateProgress(args.index, "failed");
+		throw error;
 	} finally {
 		args.signal?.removeEventListener("abort", abort);
 		unsubscribe();
 		session.dispose();
 	}
 
-	return finalText || `${agentLabel(args.index, args.total)} completed without a final text response.`;
+	return finalText || lastToolText || assistantError || `${agentLabel(args.index, args.total)} completed without a final text response.`;
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerTool({
+	pi.registerTool<typeof schema, SubagentDetails>({
 		name: TOOL_NAME,
 		label: "Run Subagent",
 		description:
@@ -192,9 +306,10 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params: SubagentInput, signal, onUpdate, ctx) {
 			const requests = buildRequests(params);
 			const total = requests.length;
+			const updateProgress = createProgressReporter(requests, onUpdate);
 			const results = await Promise.all(
 				requests.map((request, index) =>
-					runAgent({ ...request, index: index + 1, total, cwd: ctx.cwd, signal, onUpdate }),
+					runAgent({ ...request, index: index + 1, total, cwd: ctx.cwd, model: ctx.model, signal, updateProgress }),
 				),
 			);
 
@@ -207,6 +322,28 @@ export default function (pi: ExtensionAPI) {
 				content: [{ type: "text", text }],
 				details: { agents: requests },
 			};
+		},
+		renderResult(result, { expanded, isPartial }, theme) {
+			const content = result.content[0];
+			const statusText = content?.type === "text" ? content.text : "";
+			const text = statusText || (isPartial ? "Subagents running…" : "Subagents completed");
+
+			if (!expanded) {
+				return new Text(text, 0, 0);
+			}
+
+			const lines = [text];
+			result.details.agents.forEach((agent, index) => {
+				lines.push(
+					"",
+					theme.fg("toolTitle", theme.bold(`${agentLabel(index + 1, result.details.agents.length)} prompt`)),
+					theme.fg("dim", agent.task),
+					theme.fg("toolTitle", theme.bold(`${agentLabel(index + 1, result.details.agents.length)} params`)),
+					theme.fg("dim", formatAgentParams(agent)),
+				);
+			});
+
+			return new Text(lines.join("\n"), 0, 0);
 		},
 	});
 }
