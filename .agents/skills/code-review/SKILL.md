@@ -1,77 +1,130 @@
 ---
 name: code-review
-description: Perform grounded, broad code reviews that avoid tunnel vision and low-value findings. Use when asked to review code, changes, diffs, staged/unstaged work, branches, pull requests, or architecture impact of a change.
+description: Reviews code changes in phases, from change inventory through intent, context gathering, evidence-backed findings, and prioritized output. Use when the user asks for a code review, review of staged changes, review of a commit/diff/PR scope, or asks to find regressions, bugs, edge cases, naming, dead code, or architecture issues in changes.
 ---
 
 # Code Review
 
-## Review target precedence
+## Quick start
 
-Review the first available target, in order:
+Review the user-provided scope. If no scope is given, review staged changes. If nothing is staged, review the last commit.
 
-1. Explicit user request or supplied diff/PR/files.
-2. Current staged changes.
-3. Current unstaged changes.
-4. Current branch changes: commits/diff between this branch and its base.
+Always check for `.jj/` before version-control commands. If present, prefer `jj`; otherwise use `git`.
 
-Before any VCS command, check whether `.jj/` exists. If yes, use `jj` workflows; otherwise use `git`.
+## Scope selection
 
-## Review stance
+1. If the user gives an explicit scope, use it exactly:
+   - file paths, commit range, branch comparison, PR diff, patch, or described area.
+2. If no scope is given:
+   - In a jj repo: inspect staged/bookmarked workflow as appropriate; if no relevant pending change is available, review the parent-vs-current change.
+   - In a git repo: review staged changes with `git diff --staged --stat` and `git diff --staged`.
+3. If no staged git changes exist, review the last commit with `git show --stat --oneline HEAD` and `git show HEAD`.
 
-- It is valid to return no findings when the code is sound.
-- Do not manufacture issues to fill the review.
-- Prefer high-signal findings over exhaustive commentary.
-- Assign each finding a stable numeric ID (`1`, `2`, `3`, ...) so the user can reference it later.
-- Mark small style or polish issues with `Nit:`.
-- Avoid tunnel vision: zoom out from the edited lines and inspect nearby callers, domain models, invariants, tests, and existing codebase patterns.
-- Review adversarially: construct concrete timelines/counterexamples for async, UI, event-driven, and external-tool integrations.
-- For operations that affect an external target (pane, tab, window, session, file, user, request), verify the target identity is captured at the right boundary and not re-read from mutable ambient state after focus/context can change.
-- Ground every claim in inspected code, documentation, tests, or command output.
-- If a finding is a pre-existing bug rather than introduced by the reviewed change, flag it explicitly as `Pre-existing:` and explain why it is still relevant to this review.
-- Never say a library/API “probably” behaves a certain way. Check docs, installed types/source, tests, or a minimal local reproduction first; otherwise omit the claim or state the uncertainty as a question.
+## Review phases
 
-## Review categories
+### 1. Change inventory
 
-Use these lenses, matching global engineering standards:
+Identify what changed before judging it:
 
-- Correctness: bugs, broken edge cases, invalid assumptions, data loss, races, error handling, stale/global mutable context, wrong-target side effects.
-- Type safety: `any`, unsafe assertions, non-null assertions, invalid boundary parsing, impossible states that are representable.
-- Domain model: unclear ADTs/discriminated unions, duplicated domain knowledge, illegal states, weak names.
-- Architecture: change fit with existing boundaries, shallow modules, pass-through APIs, special-general mixtures, overexposed interfaces, temporal decomposition.
-- Maintainability: duplication, unclear code, needless abstraction, comments that repeat implementation, inconsistent repo conventions.
-- Dead code: unused exports, unreachable branches, obsolete helpers, stale feature flags, redundant compatibility paths, and code made unused by the change.
-- Tests: missing or weakened coverage for changed behavior; tests that assert implementation instead of behavior.
-- Security/privacy: secret leakage, authz/authn mistakes, unsafe inputs, sensitive data exposure.
-- Performance/reliability: avoid only when materially relevant; ground with code path or expected scale.
+- Files changed.
+- Lines added/removed per file.
+- Kind of change per file: production code, tests, config, docs, migrations, generated files.
+- Changed responsibilities per file: data loading, state derivation, rendering, user actions, external side effects, lifecycle, persistence/cache, events/subscriptions, formatting, validation.
+- Any suspicious omissions, such as behavior changes without tests or API changes without call-site updates.
 
-## Workflow
+Do not begin final output until the diff and each changed production responsibility have been inspected at least once. For non-trivial production changes, explicitly audit each present responsibility type: data loading, rendering, user actions, external mutations, event/subscription handling, cache/persistence, and lifecycle/visibility. Findings in one type do not replace the audit of the others.
 
-1. Identify the review target from precedence above.
-2. Read enough context around the diff to understand intent and integration points.
-3. Inspect related modules/callers/tests when a finding depends on broader behavior.
-4. Ask “what could change between trigger and effect?” for async/evented code: focus, cwd, session, active tab, auth, environment, request/user identity, timers, process lifetime.
-5. Verify suspicious API/library behavior before flagging it.
-6. Run lightweight validation when useful and safe: typecheck, targeted tests, lint, or build.
-7. Produce only actionable findings.
+### 2. Intent
 
-## Output format
+Infer the exact intent from the diff and nearby context:
 
-If there are findings, list them by severity:
+- What behavior, API, data model, UI, or workflow changed?
+- What problem does the change appear to solve?
+- What assumptions does the change introduce or remove?
+- If intent cannot be inferred, state the uncertainty and continue from observable facts.
 
-```md
-- [ID] [Severity] path:line — concise title
-  Evidence: what was inspected or verified.
-  Impact: why this matters.
-  Suggestion: minimal fix direction.
-```
+### 3. Context gathering
 
-Use severities: `Critical`, `High`, `Medium`, `Low`, `Nit`. Prefix the title with `Pre-existing:` when the issue predates the reviewed change.
+Gather enough surrounding context to understand what, why, and how:
 
-If no findings:
+- For changed functions/types/modules, inspect callers, implementations, tests, and related configuration.
+- For changed components, inspect props, consumers, state flow, styling/layout constraints, and tests/stories if present.
+- For data/schema/API changes, inspect producers, consumers, serializers/parsers, migrations, validation, and backward compatibility.
+- For behavior changes, inspect existing tests and similar code paths.
+- Prefer targeted searches and reads. Do not stop at the diff when impact depends on usage elsewhere.
+- Keep a private candidate list while reviewing. Do not finalize after the first valid issue; continue until every changed responsibility has been checked.
 
-```md
-No findings.
-Checked: <target and key verification/context inspected>.
-```
+### 4. Contract tracing
 
-Keep the final answer concise. Do not include a full diff summary unless asked.
+For each changed responsibility, identify the mechanism it relies on and verify its contract end-to-end:
+
+- What produces this state, data, event, or side effect?
+- What consumes it?
+- What causes consumers to update?
+- What owns cleanup, lifetime, and visibility/focus constraints?
+- What is the source of truth if multiple copies or derivations exist?
+- What happens when data arrives late, twice, out of order, stale, partially, or not at all?
+- What user-visible state exists before, during, and after the operation?
+- What assumptions does the new code make that callers, types, tests, or runtime checks do not enforce?
+
+Prefer findings where a contract is broken, ambiguous, duplicated, or unenforced.
+
+Do this contract tracing separately for each changed data path, user interaction, and side effect. For each one, compare the previous contract to the new contract and check whether all producers, consumers, lifecycle owners, and user states were updated consistently.
+
+For every new or changed side effect, identify: trigger, target identity, required preconditions, lifecycle/visibility/focus guard, retry/error behavior, and what happens if the triggering data is stale or superseded before the effect completes.
+
+For every new or changed state read, identify: where the value is produced, whether it is available synchronously or later, what mechanism notifies the consumer of changes, and what the consumer shows before the first value arrives.
+
+For every new or changed state replacement or merge, identify: old state, incoming state, source freshness, pending local changes, ordering/identity guarantees, and whether replacement can discard newer or user-visible data.
+
+### 5. Review dimensions
+
+Look for concrete issues in:
+
+- Correctness bugs and regressions.
+- Edge cases and error handling.
+- Backward/forward compatibility.
+- Concurrency, async ordering, caching, lifecycle, and state consistency.
+- Security, privacy, permissions, and data leakage.
+- Performance or resource leaks.
+- Test gaps that hide likely regressions.
+- Unclear or wrong naming.
+- Inconsistencies with nearby code, established conventions, or codebase patterns.
+- Dead code, unreachable branches, duplicated logic.
+- Architectural boundary violations or misplaced responsibilities.
+
+### 6. Final sweep before output
+
+Before writing the final answer, make one explicit pass over the private candidate list and the changed responsibilities:
+
+- Merge duplicates.
+- Drop speculative or weak candidates.
+- Keep concrete lower-severity findings if they reveal a real broken contract, inconsistency, missing state, or maintainability regression.
+- If only one finding remains for a non-trivial multi-file change, re-check the other changed responsibilities before finalizing; one real issue often coexists with smaller inconsistencies or lifecycle/state regressions.
+- Check that the final list is not tunnel-visioned on only one file or one kind of issue when the change spans multiple responsibilities.
+
+### 7. Ground uncertain claims
+
+Do not report speculative findings as facts.
+
+If something is only possibly broken:
+
+- Gather evidence from code, tests, docs, or command output.
+- Explain the execution path or data flow that makes it fail.
+- If evidence remains insufficient, either omit it or label it as a question/risk, not a finding.
+
+Flag issues that are likely pre-existing separately from regressions introduced by the reviewed change.
+
+### 8. Output format
+
+Return all useful findings found in the reviewed scope, not just the first or most severe ones. Include concrete Medium, Low, and Nit findings when they expose real broken contracts, inconsistencies, missing states, or maintainability regressions. If no issues are found, say so briefly and mention the reviewed scope.
+
+Use this format, with a stable finding number for reference:
+
+1. `High|Medium|Low|Nit: <short title>`
+   - `Evidence:` concrete file/path/function or observed behavior.
+   - `Impact:` what breaks or degrades.
+   - `Introduced by this change:` `Yes|No, pre-existing|Unclear`.
+   - `Suggested fix:` concise remediation when clear.
+
+Order findings by priority. Use `Nit` only for low-risk polish, consistency, or readability issues. Keep each finding referenceable by its number.

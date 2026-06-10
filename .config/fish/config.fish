@@ -19,6 +19,8 @@ set -gx MANPAGER 'nvim +Man!'
 
 # Load secrets from macOS Keychain
 keychain-env KAGI_API_KEY >/dev/null
+keychain-env EXA_API_KEY >/dev/null
+keychain-env OPENAI_API_KEY >/dev/null
 
 direnv hook fish | source
 

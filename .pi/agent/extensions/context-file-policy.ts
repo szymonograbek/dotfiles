@@ -1,5 +1,5 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "node:fs";
+import { DefaultResourceLoader, InteractiveMode, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -21,6 +21,8 @@ type ContextFile = {
 };
 
 export default function contextFilePolicyExtension(pi: ExtensionAPI) {
+	patchContextFileListing();
+
 	let ignoredFilesForRequest: readonly ContextFile[] = [];
 
 	pi.on("before_agent_start", async (event, ctx) => {
@@ -50,6 +52,103 @@ async function findIgnoredContextFiles(contextFiles: readonly ContextFile[], cwd
 	const policy = await readPolicy();
 	const policyRoot = findRepoRoot(cwd) ?? normalizePath(cwd);
 	return contextFiles.filter((file) => shouldIgnoreContextFile(file, policyRoot, policy));
+}
+
+function patchContextFileListing(): void {
+	patchResourceLoaderContextFiles();
+	patchInteractiveModeContextFiles();
+}
+
+function patchResourceLoaderContextFiles(): void {
+	if (!isPatchableResourceLoader(DefaultResourceLoader)) return;
+	if (DefaultResourceLoader.prototype.getAgentsFiles.name === "getPolicyFilteredAgentsFiles") return;
+
+	const originalGetAgentsFiles = DefaultResourceLoader.prototype.getAgentsFiles;
+	DefaultResourceLoader.prototype.getAgentsFiles = function getPolicyFilteredAgentsFiles() {
+		return filterAgentsFilesResult(originalGetAgentsFiles.call(this), getResourceLoaderCwd(this));
+	};
+}
+
+function patchInteractiveModeContextFiles(): void {
+	if (!isPatchableInteractiveMode(InteractiveMode)) return;
+	if (InteractiveMode.prototype.showLoadedResources.name === "showPolicyFilteredLoadedResources") return;
+
+	const originalShowLoadedResources = InteractiveMode.prototype.showLoadedResources;
+	InteractiveMode.prototype.showLoadedResources = function showPolicyFilteredLoadedResources(options: unknown) {
+		const resourceLoader = getInteractiveResourceLoader(this);
+		if (resourceLoader === undefined) return originalShowLoadedResources.call(this, options);
+
+		const originalGetAgentsFiles = resourceLoader.getAgentsFiles;
+		resourceLoader.getAgentsFiles = function getPolicyFilteredAgentsFiles() {
+			return filterAgentsFilesResult(originalGetAgentsFiles.call(this), getResourceLoaderCwd(this));
+		};
+
+		try {
+			return originalShowLoadedResources.call(this, options);
+		} finally {
+			resourceLoader.getAgentsFiles = originalGetAgentsFiles;
+		}
+	};
+}
+
+function filterAgentsFilesResult(result: { readonly agentsFiles: readonly ContextFile[] }, cwd: string | undefined): { readonly agentsFiles: readonly ContextFile[] } {
+	const policy = readPolicySync();
+	return {
+		agentsFiles: result.agentsFiles.filter((file) => shouldShowContextFile(file, policy, cwd)),
+	};
+}
+
+function isPatchableResourceLoader(value: unknown): value is {
+	readonly prototype: {
+		getAgentsFiles: (this: unknown) => { agentsFiles: readonly ContextFile[] };
+	};
+} {
+	if (!hasPrototype(value)) return false;
+	const prototype = value.prototype;
+	if (!isRecord(prototype)) return false;
+	return typeof prototype.getAgentsFiles === "function";
+}
+
+function isPatchableInteractiveMode(value: unknown): value is {
+	readonly prototype: {
+		showLoadedResources: (this: unknown, options: unknown) => unknown;
+	};
+} {
+	if (!hasPrototype(value)) return false;
+	const prototype = value.prototype;
+	if (!isRecord(prototype)) return false;
+	return typeof prototype.showLoadedResources === "function";
+}
+
+function getInteractiveResourceLoader(value: unknown):
+	| {
+			getAgentsFiles: (this: unknown) => { agentsFiles: readonly ContextFile[] };
+	  }
+	| undefined {
+	if (!isRecord(value)) return undefined;
+	const session = value.session;
+	if (!isRecord(session)) return undefined;
+	const resourceLoader = session.resourceLoader;
+	if (!isRecord(resourceLoader)) return undefined;
+	return typeof resourceLoader.getAgentsFiles === "function" ? resourceLoader : undefined;
+}
+
+function getResourceLoaderCwd(value: unknown): string | undefined {
+	if (!isRecord(value)) return undefined;
+	return typeof value.cwd === "string" ? value.cwd : undefined;
+}
+
+function shouldShowContextFile(file: ContextFile, policy: ContextPolicy, cwd: string | undefined): boolean {
+	const normalizedPath = normalizeContextFilePath(file.path, cwd);
+	if (normalizedPath === normalizePath(GLOBAL_AGENT_CONTEXT)) return true;
+	const policyRoot = findRepoRoot(path.dirname(normalizedPath)) ?? (cwd === undefined ? undefined : findRepoRoot(cwd));
+	if (policyRoot === undefined) return true;
+	return !shouldIgnoreContextFile({ path: normalizedPath, content: file.content }, policyRoot, policy);
+}
+
+function normalizeContextFilePath(filePath: string, cwd: string | undefined): string {
+	if (path.isAbsolute(filePath)) return normalizePath(filePath);
+	return normalizePath(path.join(cwd ?? process.cwd(), filePath));
 }
 
 async function handleCommand(args: string, ctx: ExtensionContext): Promise<void> {
@@ -183,6 +282,14 @@ async function readPolicy(): Promise<ContextPolicy> {
 	}
 }
 
+function readPolicySync(): ContextPolicy {
+	try {
+		return parsePolicy(JSON.parse(readFileSync(CONFIG_PATH, "utf8")));
+	} catch {
+		return emptyPolicy();
+	}
+}
+
 async function writePolicy(policy: ContextPolicy): Promise<void> {
 	await mkdir(path.dirname(CONFIG_PATH), { recursive: true });
 	await writeFile(CONFIG_PATH, `${JSON.stringify(policy, null, "\t")}\n`, "utf8");
@@ -232,6 +339,10 @@ function normalizePath(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
+}
+
+function hasPrototype(value: unknown): value is { readonly prototype: unknown } {
+	return (typeof value === "object" || typeof value === "function") && value !== null && "prototype" in value;
 }
 
 function isString(value: unknown): value is string {
