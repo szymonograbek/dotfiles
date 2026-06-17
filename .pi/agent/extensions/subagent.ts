@@ -70,6 +70,13 @@ type AgentRequest = {
 type SubagentDetails = { agents: AgentRequest[] };
 type TextUpdate = { content: Array<{ type: "text"; text: string }>; details: SubagentDetails };
 type UpdateProgress = (index: number, text: string) => void;
+type ToolCallTheme = {
+	fg(color: "toolTitle" | "accent", text: string): string;
+	bold(text: string): string;
+};
+type ToolResultTheme = {
+	fg(color: "toolOutput" | "muted", text: string): string;
+};
 
 type RunAgentArgs = AgentRequest & {
 	index: number;
@@ -160,14 +167,36 @@ function createProgressReporter(
 	};
 }
 
-function formatAgentParams(agent: AgentRequest): string {
-	return [
-		`allowedTools: ${agent.allowedTools.join(", ") || "none"}`,
-		`includeSkills: ${agent.includeSkills}`,
-		`includeExtensions: ${agent.includeExtensions}`,
-		`includeContextFiles: ${agent.includeContextFiles}`,
-		`thinkingLevel: ${agent.thinkingLevel}`,
-	].join("\n");
+function quoted(text: string): string {
+	return `"${text.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+}
+
+function formatSubagentCall(params: SubagentInput, theme: ToolCallTheme): string {
+	const title = theme.fg("toolTitle", theme.bold("Run Subagent"));
+	if (params.agents !== undefined && params.agents.length > 0) {
+		return `${title} ${theme.fg("accent", `${params.agents.length} agents`)}`;
+	}
+
+	const task = params.task?.trim();
+	return task && task.length > 0 ? `${title} ${theme.fg("accent", quoted(truncateTask(task)))}` : title;
+}
+
+function textContent(result: { readonly content: readonly { readonly type: string; readonly text?: string }[] }): string {
+	const content = result.content[0];
+	return content?.type === "text" && typeof content.text === "string" ? content.text : "";
+}
+
+function renderCollapsedResult(): Text {
+	return new Text("", 0, 0);
+}
+
+function renderExpandedResult(
+	result: { readonly content: readonly { readonly type: string; readonly text?: string }[] },
+	isPartial: boolean,
+	theme: ToolResultTheme,
+): Text {
+	const text = textContent(result);
+	return new Text(text ? theme.fg("toolOutput", text) : isPartial ? theme.fg("muted", "Subagents running…") : "", 0, 0);
 }
 
 function buildRequest(params: SubagentInput, agent: AgentInput): AgentRequest {
@@ -323,27 +352,11 @@ export default function (pi: ExtensionAPI) {
 				details: { agents: requests },
 			};
 		},
+		renderCall(params, theme) {
+			return new Text(formatSubagentCall(params, theme), 0, 0);
+		},
 		renderResult(result, { expanded, isPartial }, theme) {
-			const content = result.content[0];
-			const statusText = content?.type === "text" ? content.text : "";
-			const text = statusText || (isPartial ? "Subagents running…" : "Subagents completed");
-
-			if (!expanded) {
-				return new Text(text, 0, 0);
-			}
-
-			const lines = [text];
-			result.details.agents.forEach((agent, index) => {
-				lines.push(
-					"",
-					theme.fg("toolTitle", theme.bold(`${agentLabel(index + 1, result.details.agents.length)} prompt`)),
-					theme.fg("dim", agent.task),
-					theme.fg("toolTitle", theme.bold(`${agentLabel(index + 1, result.details.agents.length)} params`)),
-					theme.fg("dim", formatAgentParams(agent)),
-				);
-			});
-
-			return new Text(lines.join("\n"), 0, 0);
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
 		},
 	});
 }

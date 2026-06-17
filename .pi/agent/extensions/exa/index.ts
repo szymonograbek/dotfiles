@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { Exa, type AnswerOptions, type ContentsOptions, type DeepOutputSchema, type RegularSearchOptions, type SectionTag, type VerbosityOptions } from "exa-js";
 import { Type } from "typebox";
 
@@ -178,6 +179,60 @@ function formatJson(value: unknown): string {
 	return JSON.stringify(value, null, 2) ?? "null";
 }
 
+function property(value: unknown, key: string): unknown {
+	return typeof value === "object" && value !== null
+		? Object.getOwnPropertyDescriptor(value, key)?.value
+		: undefined;
+}
+
+function stringProperty(value: unknown, key: string): string | undefined {
+	const found = property(value, key);
+	return typeof found === "string" ? found : undefined;
+}
+
+function stringArrayProperty(value: unknown, key: string): readonly string[] | undefined {
+	const found = property(value, key);
+	return Array.isArray(found) && found.every((item) => typeof item === "string") ? found : undefined;
+}
+
+function quoted(text: string): string {
+	return `"${text.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+}
+
+function formatQueryCall(
+	label: string,
+	params: unknown,
+	theme: { fg(color: "toolTitle" | "accent", text: string): string; bold(text: string): string },
+): string {
+	const query = stringProperty(params, "query")?.trim();
+	const title = theme.fg("toolTitle", theme.bold(label));
+	return query && query.length > 0 ? `${title} ${theme.fg("accent", quoted(query))}` : title;
+}
+
+function formatContentsCall(params: unknown, theme: { fg(color: "toolTitle" | "accent", text: string): string; bold(text: string): string }): string {
+	const urls = stringArrayProperty(params, "urls") ?? [];
+	const title = theme.fg("toolTitle", theme.bold("Exa Contents"));
+	return urls.length > 0 ? `${title} ${theme.fg("accent", urls.map(quoted).join(", "))}` : title;
+}
+
+function textContent(result: { readonly content: readonly { readonly type: string; readonly text?: string }[] }): string {
+	const content = result.content[0];
+	return content?.type === "text" && typeof content.text === "string" ? content.text : "";
+}
+
+function renderCollapsedResult(): Text {
+	return new Text("", 0, 0);
+}
+
+function renderExpandedResult(
+	result: { readonly content: readonly { readonly type: string; readonly text?: string }[] },
+	isPartial: boolean,
+	theme: { fg(color: "toolOutput" | "muted", text: string): string },
+): Text {
+	const text = textContent(result);
+	return new Text(text ? theme.fg("toolOutput", text) : isPartial ? theme.fg("muted", "Running…") : "", 0, 0);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -339,6 +394,12 @@ export default function (pi: ExtensionAPI) {
 				details: result,
 			};
 		},
+		renderCall(params, theme) {
+			return new Text(formatQueryCall("Exa Search", params, theme), 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
+		},
 	});
 
 	pi.registerTool({
@@ -358,6 +419,12 @@ export default function (pi: ExtensionAPI) {
 				details: result,
 			};
 		},
+		renderCall(params, theme) {
+			return new Text(formatContentsCall(params, theme), 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
+		},
 	});
 
 	pi.registerTool({
@@ -376,6 +443,12 @@ export default function (pi: ExtensionAPI) {
 				content: [{ type: "text", text: formatJson(result) }],
 				details: result,
 			};
+		},
+		renderCall(params, theme) {
+			return new Text(formatQueryCall("Exa Answer", params, theme), 0, 0);
+		},
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
 		},
 	});
 }

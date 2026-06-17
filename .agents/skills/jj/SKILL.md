@@ -28,6 +28,7 @@ jj st                          # status
 jj log                         # commit graph
 jj diff                        # diff of working copy
 jj diff -r <rev>               # diff of a specific commit
+jj show <rev>...               # show one or more commits
 
 # Making changes
 jj describe -m "msg"           # set message on current change
@@ -41,9 +42,9 @@ jj split -r <rev> <file>...   # split by moving specific files into the first co
 jj abandon <rev>               # discard a commit (descendants rebase to its parent)
 
 # Rebasing
-jj rebase -d <dest>            # rebase working copy onto dest
-jj rebase -r <rev> -d <dest>   # rebase a specific commit
-jj rebase -s <rev> -d <dest>   # rebase rev and all its descendants
+jj rebase -o <dest>            # rebase working copy onto dest
+jj rebase -r <rev> -o <dest>   # rebase a specific commit
+jj rebase -s <rev> -o <dest>   # rebase rev and all its descendants
 
 # Conflicts — never block operations; stored as objects, resolved later
 jj resolve --list              # list conflicted files
@@ -54,10 +55,10 @@ jj resolve --tool=:theirs     # resolve all conflicts by taking their side
 jj bookmark create <name>      # create at working copy
 jj bookmark set <name>         # move to working copy
 jj bookmark advance            # move bookmark forward to @
-jj bookmark track main@origin  # track a remote bookmark
+jj bookmark track main --remote origin  # track a remote bookmark
 
 # Git interop
-jj git fetch
+jj git fetch                   # fetch; remote rewrites with preserved change IDs auto-rebase descendants
 jj git push
 jj git push --bookmark <name>  # push a specific bookmark
 jj git init --colocate         # init jj in existing git repo
@@ -83,5 +84,6 @@ jj op restore <op-id>          # restore repo to any past state
 ## Common Mistakes
 
 - Do not use `git add`, `git commit`, `git stash`, or `git checkout` in a jj repo.
+- Prefer `--onto`/`-o`; `--destination`/`-d` is deprecated.
 - Do not create bookmarks for local-only work — they're only needed for remotes.
 - Do not worry about losing work — `jj undo` / `jj op restore` recovers everything.

@@ -133,15 +133,37 @@ function adfText(text) {
   return { type: "doc", version: 1, content: paragraphs };
 }
 
+const textOnlyAdfTypes = new Set([
+  "doc",
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "listItem",
+  "text",
+  "hardBreak",
+]);
+
+function adfMarker(node) {
+  if (node.type === "media") {
+    const alt = typeof node.attrs?.alt === "string" && node.attrs.alt ? `:${node.attrs.alt}` : "";
+    return `[ADF-MEDIA${alt}]`;
+  }
+  return `[ADF-${String(node.type).toUpperCase()}]`;
+}
+
 function adfToText(node) {
   if (!node || typeof node !== "object") return "";
   if (node.type === "text") return node.text || "";
   if (node.type === "hardBreak") return "\n";
   const children = Array.isArray(node.content) ? node.content.map(adfToText).join("") : "";
+  if (node.type === "mediaSingle") return `${children || adfMarker(node)}\n`;
+  if (!textOnlyAdfTypes.has(node.type)) return children || adfMarker(node);
   if (["paragraph", "heading", "listItem"].includes(node.type)) return `${children}\n`;
   if (node.type === "bulletList" || node.type === "orderedList") return `${children}\n`;
   return children;
 }
+
 
 function compactUser(user) {
   if (!user) return null;
@@ -182,7 +204,7 @@ function compactIssueDetails(issue) {
   const fields = issue.fields || {};
   return {
     ...compactIssue(issue),
-    descriptionText: adfToText(fields.description).trim(),
+    description: adfToText(fields.description).trim(),
     links: (fields.issuelinks || []).map((link) => {
       if (link.inwardIssue) {
         return {

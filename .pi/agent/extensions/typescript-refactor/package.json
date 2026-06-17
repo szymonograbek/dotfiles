@@ -1,0 +1,20 @@
+{
+  "name": "pi-typescript-refactor-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pi extension exposing TypeScript language-service refactor tools.",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.77.0",
+    "typebox": "^1.1.39",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

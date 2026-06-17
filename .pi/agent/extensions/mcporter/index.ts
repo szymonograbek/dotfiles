@@ -116,26 +116,49 @@ function quoted(text: string): string {
 	return `"${text.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
 }
 
-function formatSearchCall(params: unknown): string {
-	const query = stringProperty(params, "query");
-	return typeof query === "string" && query.trim().length > 0 ? `mcp_search ${quoted(query)}` : "mcp_search";
+type ToolCallTheme = {
+	fg(color: "toolTitle" | "accent", text: string): string;
+	bold(text: string): string;
+};
+
+type ToolResultTheme = {
+	fg(color: "toolOutput" | "muted", text: string): string;
+};
+
+function formatToolCall(title: string, args: readonly string[], theme: ToolCallTheme): string {
+	const styledTitle = theme.fg("toolTitle", theme.bold(title));
+	return args.length > 0 ? `${styledTitle} ${theme.fg("accent", args.join(" "))}` : styledTitle;
 }
 
-function formatInspectCall(params: unknown): string {
+function formatSearchCall(params: unknown, theme: ToolCallTheme): string {
+	const query = stringProperty(params, "query")?.trim();
+	return formatToolCall("mcp_search", query && query.length > 0 ? [quoted(query)] : [], theme);
+}
+
+function formatInspectCall(params: unknown, theme: ToolCallTheme): string {
 	const target = stringProperty(params, "target");
-	const parts = ["mcp_inspect", ...(typeof target === "string" ? [quoted(target)] : [])];
+	const args = typeof target === "string" ? [quoted(target)] : [];
 	const mode = stringProperty(params, "mode");
 	const uri = stringProperty(params, "uri");
-	if (typeof mode === "string") parts.push(`mode=${quoted(mode)}`);
-	if (typeof uri === "string") parts.push(`uri=${quoted(uri)}`);
-	return parts.join(" ");
+	return formatToolCall(
+		"mcp_inspect",
+		[
+			...args,
+			...(typeof mode === "string" ? [`mode=${quoted(mode)}`] : []),
+			...(typeof uri === "string" ? [`uri=${quoted(uri)}`] : []),
+		],
+		theme,
+	);
 }
 
-function formatCallCall(params: unknown): string {
+function formatCallCall(params: unknown, theme: ToolCallTheme): string {
 	const tool = stringProperty(params, "tool");
 	const args = stringArrayProperty(params, "params")?.join(" ");
-	const parts = ["mcp_call", ...(typeof tool === "string" ? [quoted(tool)] : []), ...(args ? [args] : [])];
-	return parts.join(" ");
+	return formatToolCall(
+		"mcp_call",
+		[...(typeof tool === "string" ? [quoted(tool)] : []), ...(args ? [args] : [])],
+		theme,
+	);
 }
 
 function textContent(result: { readonly content: readonly { readonly type: string; readonly text?: string }[] }): string {
@@ -150,9 +173,10 @@ function renderCollapsedResult(): Text {
 function renderExpandedResult(
 	result: { readonly content: readonly { readonly type: string; readonly text?: string }[] },
 	isPartial: boolean,
+	theme: ToolResultTheme,
 ): Text {
 	const text = textContent(result);
-	return new Text(text || (isPartial ? "Running…" : ""), 0, 0);
+	return new Text(text ? theme.fg("toolOutput", text) : isPartial ? theme.fg("muted", "Running…") : "", 0, 0);
 }
 
 function truncate(text: string, maxChars: number): string {
@@ -514,10 +538,10 @@ export default function (pi: ExtensionAPI) {
 			});
 		},
 		renderCall(params, theme) {
-			return new Text(theme.fg("toolTitle", theme.bold(formatSearchCall(params))), 0, 0);
+			return new Text(formatSearchCall(params, theme), 0, 0);
 		},
-		renderResult(result, { expanded, isPartial }) {
-			return expanded ? renderExpandedResult(result, isPartial) : renderCollapsedResult();
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
 		},
 	});
 
@@ -531,10 +555,10 @@ export default function (pi: ExtensionAPI) {
 			return inspectMcporter(params.target, params.mode, params.uri);
 		},
 		renderCall(params, theme) {
-			return new Text(theme.fg("toolTitle", theme.bold(formatInspectCall(params))), 0, 0);
+			return new Text(formatInspectCall(params, theme), 0, 0);
 		},
-		renderResult(result, { expanded, isPartial }) {
-			return expanded ? renderExpandedResult(result, isPartial) : renderCollapsedResult();
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
 		},
 	});
 
@@ -548,10 +572,10 @@ export default function (pi: ExtensionAPI) {
 			return callMcporter(params.tool, params.params ?? []);
 		},
 		renderCall(params, theme) {
-			return new Text(theme.fg("toolTitle", theme.bold(formatCallCall(params))), 0, 0);
+			return new Text(formatCallCall(params, theme), 0, 0);
 		},
-		renderResult(result, { expanded, isPartial }) {
-			return expanded ? renderExpandedResult(result, isPartial) : renderCollapsedResult();
+		renderResult(result, { expanded, isPartial }, theme) {
+			return expanded ? renderExpandedResult(result, isPartial, theme) : renderCollapsedResult();
 		},
 	});
 }

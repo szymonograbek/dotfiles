@@ -53,17 +53,26 @@ node <skill-dir>/scripts/jira.mjs request GET /rest/api/3/issue/ABC-123   # raw 
 
 1. Identify the issue key from the user request or branch name. Ask only if unavailable.
 2. Read before writing:
-   - `issue <KEY>` for compact issue details with plain-text description.
+   - `issue <KEY>` for compact issue details with readable description.
    - `comments <KEY>` if comment context matters.
    - `transitions <KEY>` before changing status.
 3. For text writes, prefer purpose-built commands:
    - `add-comment <KEY> <text>` creates valid ADF.
    - `edit <KEY>` reads raw Jira JSON from stdin.
-4. For unsupported endpoints, use `request METHOD PATH [json]`.
-5. Summarize changed issue keys and API errors. Never expose tokens.
+4. Description edits are rich-text destructive unless handled carefully:
+   - The `issue <KEY>` command returns `description` for reading. Non-text ADF nodes appear inline as markers like `[ADF-MEDIA:image.png]`. It does **not** return full ADF.
+   - If `description` contains `[ADF-...]` markers, do not replace `fields.description` from this readable text; that will delete photos/cards/tables.
+   - Before any description update, fetch the raw issue description ADF:
+     ```sh
+     node <skill-dir>/scripts/jira.mjs request GET '/rest/api/3/issue/ABC-123?fields=description'
+     ```
+   - Modify that ADF in place and preserve unknown/non-text nodes exactly. Prefer appending or editing only specific text nodes/paragraphs.
+   - If preserving the ADF is not straightforward, add a comment instead of editing the description, or ask for confirmation.
+5. For unsupported endpoints, use `request METHOD PATH [json]`.
+6. Summarize changed issue keys and API errors. Never expose tokens.
 
 ## Notes
 
 - Jira rich text fields use Atlassian Document Format (ADF). The helper only converts plain text comments to simple ADF paragraphs.
-- For descriptions or complex rich text fields, send explicit ADF JSON via `edit` or `request`.
+- For descriptions or complex rich text fields, always fetch raw ADF first and preserve existing non-text nodes.
 - Use `/rest/api/3/search/jql` for JQL search; pagination uses `nextPageToken`.
