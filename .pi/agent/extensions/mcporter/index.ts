@@ -1,3 +1,7 @@
+import { randomBytes } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Fuse from "fuse.js";
 import { createRuntime } from "mcporter";
 import { Text } from "@earendil-works/pi-tui";
@@ -6,22 +10,23 @@ import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
-	truncateHead,
+	truncateTail,
 	type AgentToolResult,
 	type ExtensionAPI,
+	type TruncationOptions,
+	type TruncationResult,
 } from "@earendil-works/pi-coding-agent";
 import type { Runtime } from "mcporter";
 
 const DEFAULT_SEARCH_LIMIT = 30;
 const MAX_SEARCH_LIMIT = 100;
-const MAX_INSPECT_CHARS = 24_000;
-const MAX_INLINE_VALUE_CHARS = 4_096;
+const MAX_INSPECT_BYTES = 24_000;
 
 const McpSearchParams = Type.Object({
 	query: Type.Optional(
 		Type.String({
 			description:
-				"Search MCP servers/tools by capability, name, description, or parameter. Omit to list servers.",
+				"Search MCP servers/tools by capability, name, description, or parameter. Omit to list servers. Multi-word queries return closest partial matches.",
 		}),
 	),
 	limit: Type.Optional(
@@ -78,6 +83,7 @@ type TokenMatch = {
 };
 
 const FUSE_THRESHOLD = 0.32;
+const MIN_PARTIAL_MATCH_RATIO = 0.6;
 const normalize = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const tokensOf = (text: string): string[] => normalize(text).split(/\s+/).filter(Boolean);
 const clampLimit = (limit: number | undefined): number =>
@@ -179,12 +185,6 @@ function renderExpandedResult(
 	return new Text(text ? theme.fg("toolOutput", text) : isPartial ? theme.fg("muted", "Running…") : "", 0, 0);
 }
 
-function truncate(text: string, maxChars: number): string {
-	return text.length <= maxChars
-		? text
-		: `${text.slice(0, maxChars)}\n\n…truncated ${text.length - maxChars} chars. Narrow the search or inspect a specific tool.`;
-}
-
 function stringify(value: unknown): string {
 	if (typeof value === "string") return value;
 	try {
@@ -194,60 +194,54 @@ function stringify(value: unknown): string {
 	}
 }
 
-type PreparedValue = {
-	readonly value: unknown;
-	readonly omittedLargeValues: number;
-};
+type OutputForAgent =
+	| { readonly kind: "complete"; readonly text: string }
+	| {
+			readonly kind: "truncated";
+			readonly text: string;
+			readonly truncation: TruncationResult;
+			readonly fullOutputPath: string;
+	  };
 
-function prepareToolValue(value: unknown): PreparedValue {
-	if (typeof value === "string" && value.length > MAX_INLINE_VALUE_CHARS) {
-		return {
-			value: `[omitted large value: ${formatSize(Buffer.byteLength(value, "utf8"))}]`,
-			omittedLargeValues: 1,
-		};
-	}
-	if (Array.isArray(value)) {
-		const prepared = value.map(prepareToolValue);
-		return {
-			value: prepared.map((item) => item.value),
-			omittedLargeValues: prepared.reduce((total, item) => total + item.omittedLargeValues, 0),
-		};
-	}
-	if (typeof value === "object" && value !== null) {
-		const prepared = Object.entries(value).map(([key, entry]) => ({ key, prepared: prepareToolValue(entry) }));
-		return {
-			value: prepared.reduce<Record<string, unknown>>(
-				(acc, entry) => ({ ...acc, [entry.key]: entry.prepared.value }),
-				{},
-			),
-			omittedLargeValues: prepared.reduce((total, entry) => total + entry.prepared.omittedLargeValues, 0),
-		};
-	}
-	return { value, omittedLargeValues: 0 };
+function tempOutputPath(): string {
+	return join(tmpdir(), `pi-mcporter-${randomBytes(8).toString("hex")}.log`);
 }
 
-function stringifyToolOutput(value: unknown): PreparedValue {
-	const prepared = prepareToolValue(value);
-	return { value: stringify(prepared.value), omittedLargeValues: prepared.omittedLargeValues };
+async function writeFullOutput(content: string): Promise<string> {
+	const path = tempOutputPath();
+	await writeFile(path, content, "utf8");
+	return path;
 }
 
-function truncateToolOutput(value: unknown): string {
-	const prepared = stringifyToolOutput(value);
-	const content = typeof prepared.value === "string" ? prepared.value : stringify(prepared.value);
-	const truncation = truncateHead(content, {
-		maxBytes: DEFAULT_MAX_BYTES,
-		maxLines: DEFAULT_MAX_LINES,
-	});
-	const notices: string[] = [];
-	if (prepared.omittedLargeValues > 0) {
-		notices.push(`Output truncated because it was too long: omitted ${prepared.omittedLargeValues} large value(s).`);
+function truncationFooter(truncation: TruncationResult, fullOutputPath: string): string {
+	const startLine = Math.max(1, truncation.totalLines - truncation.outputLines + 1);
+	const endLine = truncation.totalLines;
+	if (truncation.lastLinePartial) {
+		return `[Output truncated. Showing last ${formatSize(truncation.outputBytes)} of line ${endLine}. Full output: ${fullOutputPath}]`;
 	}
-	if (truncation.truncated) {
-		notices.push(
-			`Output truncated because it was too long: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`,
-		);
+	if (truncation.truncatedBy === "lines") {
+		return `[Output truncated. Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${fullOutputPath}]`;
 	}
-	return notices.length === 0 ? truncation.content : `${truncation.content}\n\n[${notices.join(" ")}]`;
+	return `[Output truncated. Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(truncation.maxBytes)} limit). Full output: ${fullOutputPath}]`;
+}
+
+async function truncateOutputForAgent(content: string, options: TruncationOptions): Promise<OutputForAgent> {
+	const truncation = truncateTail(content, options);
+	if (!truncation.truncated) return { kind: "complete", text: truncation.content };
+	const fullOutputPath = await writeFullOutput(content);
+	const separator = truncation.content.length > 0 ? "\n\n" : "";
+	return {
+		kind: "truncated",
+		text: `${truncation.content}${separator}${truncationFooter(truncation, fullOutputPath)}`,
+		truncation,
+		fullOutputPath,
+	};
+}
+
+function detailsWithOutput(base: Record<string, unknown>, output: OutputForAgent): Record<string, unknown> {
+	return output.kind === "truncated"
+		? { ...base, truncation: output.truncation, fullOutputPath: output.fullOutputPath }
+		: base;
 }
 
 function errorMessage(error: unknown): string {
@@ -315,8 +309,21 @@ function fieldsFromFuse(matches: readonly { readonly key?: string }[] | undefine
 	);
 }
 
+function uniqueStrings(items: readonly string[]): readonly string[] {
+	return items.filter((item, index) => items.indexOf(item) === index);
+}
+
+function tokenVariants(token: string): readonly string[] {
+	const variants = [token];
+	if (token.endsWith("ies") && token.length > 3) variants.push(`${token.slice(0, -3)}y`);
+	if (token.endsWith("s") && token.length > 3) variants.push(token.slice(0, -1));
+	if (!token.endsWith("s") && token.length > 2) variants.push(`${token}s`);
+	return uniqueStrings(variants);
+}
+
 function containsToken(text: string, token: string): boolean {
-	return tokensOf(text).some((word) => word.includes(token));
+	const variants = tokenVariants(token);
+	return tokensOf(text).some((word) => variants.some((variant) => word.includes(variant)));
 }
 
 function exactTokenMatch(token: string, document: SearchDocument): TokenMatch | undefined {
@@ -337,16 +344,8 @@ function exactTokenMatch(token: string, document: SearchDocument): TokenMatch | 
 	return fields.length > 0 ? { score, matchedFields: fields } : undefined;
 }
 
-function fuseTokenMatches(token: string, documents: readonly SearchDocument[]): Map<string, TokenMatch> {
-	const exactMatches = new Map(
-		documents.flatMap((document) => {
-			const match = exactTokenMatch(token, document);
-			return match ? [[document.id, match]] : [];
-		}),
-	);
-	if (exactMatches.size > 0 || token.length < 3) return exactMatches;
-
-	const fuse = new Fuse(documents, {
+function searchFuse(documents: readonly SearchDocument[]): Fuse<SearchDocument> {
+	return new Fuse(documents, {
 		includeMatches: true,
 		includeScore: true,
 		ignoreLocation: true,
@@ -359,38 +358,67 @@ function fuseTokenMatches(token: string, documents: readonly SearchDocument[]): 
 			{ name: "searchableParams", weight: 0.02 },
 		],
 	});
+}
+
+function mergeTokenMatch(left: TokenMatch | undefined, right: TokenMatch): TokenMatch {
+	return {
+		score: (left?.score ?? 0) + right.score,
+		matchedFields: uniqueFields([...(left?.matchedFields ?? []), ...right.matchedFields]),
+	};
+}
+
+function scoreFuseMatch(score: number | undefined, fields: readonly MatchedField[]): number {
+	const fuzzyScore = Math.round((1 - (score ?? FUSE_THRESHOLD)) * 100);
+	const fieldBoost = fields.reduce((total, field) => {
+		if (field === "name") return total + 180;
+		if (field === "description") return total + 55;
+		return total + 8;
+	}, 0);
+	return fuzzyScore + fieldBoost;
+}
+
+function fuseTokenMatches(
+	token: string,
+	documents: readonly SearchDocument[],
+	fuse: Fuse<SearchDocument>,
+): Map<string, TokenMatch> {
+	const matches = new Map<string, TokenMatch>();
+	for (const document of documents) {
+		const exactMatch = exactTokenMatch(token, document);
+		if (exactMatch) matches.set(document.id, exactMatch);
+	}
+	if (token.length < 3) return matches;
 
 	for (const result of fuse.search(token)) {
 		const fields = fieldsFromFuse(result.matches);
 		if (fields.length === 0) continue;
-		const fuzzyScore = Math.round((1 - (result.score ?? FUSE_THRESHOLD)) * 100);
-		const fieldBoost = fields.reduce((total, field) => {
-			if (field === "name") return total + 180;
-			if (field === "description") return total + 55;
-			return total + 8;
-		}, 0);
-		const previous = exactMatches.get(result.item.id);
-		const next = {
-			score: Math.max(previous?.score ?? 0, fuzzyScore + fieldBoost),
-			matchedFields: uniqueFields([...(previous?.matchedFields ?? []), ...fields]),
-		};
-		exactMatches.set(result.item.id, next);
+		const fuzzyMatch = { score: scoreFuseMatch(result.score, fields), matchedFields: fields };
+		matches.set(result.item.id, mergeTokenMatch(matches.get(result.item.id), fuzzyMatch));
 	}
 
-	return exactMatches;
+	return matches;
 }
 
-function scoreTools(queryTokens: readonly string[], tools: readonly ToolSummary[]): ScoredTool[] {
+function requiredTokenMatches(tokenCount: number): number {
+	if (tokenCount <= 1) return tokenCount;
+	if (tokenCount === 2) return 1;
+	return Math.max(2, Math.ceil(tokenCount * MIN_PARTIAL_MATCH_RATIO));
+}
+
+function scoreTools(queryTokens: readonly string[], tools: readonly ToolSummary[], minimumTokenMatches?: number): ScoredTool[] {
 	const documents = tools.map(toSearchDocument);
-	const tokenMatches = queryTokens.map((token) => fuseTokenMatches(token, documents));
+	const fuse = searchFuse(documents);
+	const tokenMatches = queryTokens.map((token) => fuseTokenMatches(token, documents, fuse));
+	const requiredMatches = minimumTokenMatches ?? requiredTokenMatches(queryTokens.length);
 	return documents.flatMap((document) => {
 		const matches = tokenMatches.map((matches) => matches.get(document.id));
-		if (!matches.every((match) => typeof match !== "undefined")) return [];
+		const foundMatches = matches.filter((match): match is TokenMatch => typeof match !== "undefined");
+		if (foundMatches.length < requiredMatches) return [];
 		return [
 			{
 				tool: document,
-				score: matches.reduce((total, match) => total + (match?.score ?? 0), 0),
-				matchedFields: uniqueFields(matches.flatMap((match) => match?.matchedFields ?? [])),
+				score: foundMatches.reduce((total, match) => total + match.score, 0) + foundMatches.length * 400,
+				matchedFields: uniqueFields(foundMatches.flatMap((match) => match.matchedFields)),
 			},
 		];
 	});
@@ -402,7 +430,7 @@ function firstLine(text: string | undefined): string | undefined {
 
 function formatMatch({ tool, matchedFields }: ScoredTool): string {
 	const description = firstLine(tool.description);
-	const matchText = ` _(matched: ${matchedFields.join(", ")})_`;
+	const matchText = matchedFields.length > 0 ? ` _(matched: ${matchedFields.join(", ")})_` : "";
 	return description ? `- ${tool.name}${matchText}: ${description}` : `- ${tool.name}${matchText}`;
 }
 
@@ -416,6 +444,19 @@ function groupByServer(matches: readonly ScoredTool[]): string {
 		.join("\n\n");
 }
 
+function selectedServers(queryTokens: readonly string[], servers: readonly string[]): readonly string[] {
+	return servers.filter((server) => queryTokens.includes(normalize(server)));
+}
+
+function removeServerTokens(queryTokens: readonly string[], servers: readonly string[]): readonly string[] {
+	const serverTokens = servers.map(normalize);
+	return queryTokens.filter((token) => !serverTokens.includes(token));
+}
+
+function unscoredTools(tools: readonly ToolSummary[]): readonly ScoredTool[] {
+	return tools.map((tool) => ({ tool, score: 0, matchedFields: [] }));
+}
+
 async function searchMcporter(query: string | undefined, requestedLimit: number | undefined): Promise<string> {
 	const list = await listServersText();
 	const queryTokens = tokensOf(query ?? "");
@@ -423,14 +464,31 @@ async function searchMcporter(query: string | undefined, requestedLimit: number 
 		return `${list}\n\nTip: call mcp_search with capability words to search tool names, descriptions, and parameters.`;
 	}
 
-	const tools = (await Promise.all((await serverNames()).map(listServerTools))).flat();
-	const matches = scoreTools(queryTokens, tools).sort(
+	const servers = await serverNames();
+	const scopedServers = selectedServers(queryTokens, servers);
+	const tools = (await Promise.all(servers.map(listServerTools))).flat();
+	const scopedTools = scopedServers.length > 0 ? tools.filter((tool) => scopedServers.includes(tool.server)) : tools;
+	const searchTokens = scopedServers.length > 0 ? removeServerTokens(queryTokens, scopedServers) : queryTokens;
+	const limit = clampLimit(requestedLimit);
+
+	if (searchTokens.length === 0) {
+		const shown = unscoredTools(scopedTools).slice(0, limit);
+		const suffix = scopedTools.length > shown.length ? `\n\nShowing top ${shown.length} of ${scopedTools.length} tools.` : "";
+		return `${groupByServer(shown)}${suffix}`;
+	}
+
+	const minimumTokenMatches = scopedServers.length > 0 ? 1 : undefined;
+	const matches = scoreTools(searchTokens, scopedTools, minimumTokenMatches).sort(
 		(left, right) => right.score - left.score || left.tool.name.localeCompare(right.tool.name),
 	);
-	const shown = matches.slice(0, clampLimit(requestedLimit));
+	const shown = matches.slice(0, limit);
 
 	if (shown.length === 0) {
-		return `No mcporter tools matched '${query}'. Every query word must fuzzy-match the tool name, description, or parameters. Try fewer words.\n\nServers:\n${list}`;
+		if (scopedServers.length > 0) {
+			const shownTools = unscoredTools(scopedTools).slice(0, limit);
+			return `No mcporter tools in ${scopedServers.join(", ")} matched '${searchTokens.join(" ")}'. Available tools:\n\n${groupByServer(shownTools)}`;
+		}
+		return `No mcporter tools matched '${query}'. Try fewer or broader words.\n\nServers:\n${list}`;
 	}
 
 	const suffix = matches.length > shown.length ? `\n\nShowing top ${shown.length} of ${matches.length} matches. Narrow the query for a better result.` : "";
@@ -482,7 +540,11 @@ async function inspectMcporter(target: string, mode: string | undefined, uri: st
 		const sdk = await runtime();
 		if (normalizedMode === "resource") {
 			const result = uri ? await sdk.readResource(target, uri, { disableOAuth: true }) : await sdk.listResources(target, { disableOAuth: true });
-			return toolResult(truncate(stringify(result), MAX_INSPECT_CHARS), { target, mode, uri });
+			const output = await truncateOutputForAgent(stringify(result), {
+				maxBytes: MAX_INSPECT_BYTES,
+				maxLines: DEFAULT_MAX_LINES,
+			});
+			return toolResult(output.text, detailsWithOutput({ target, mode, uri }, output));
 		}
 
 		const selector = splitToolSelector(target);
@@ -491,7 +553,11 @@ async function inspectMcporter(target: string, mode: string | undefined, uri: st
 		if (selector) {
 			const found = tools.find((tool) => tool.name === selector.toolName);
 			if (!found) return toolResult(`No tool found for '${target}'.`, { target, mode });
-			return toolResult(truncate(stringify(found), MAX_INSPECT_CHARS), { target, mode });
+			const output = await truncateOutputForAgent(stringify(found), {
+				maxBytes: MAX_INSPECT_BYTES,
+				maxLines: DEFAULT_MAX_LINES,
+			});
+			return toolResult(output.text, detailsWithOutput({ target, mode }, output));
 		}
 
 		if (normalizedMode === "brief") return toolResult(formatToolBrief(server, tools), { target, mode });
@@ -512,7 +578,14 @@ async function callMcporter(tool: string, params: readonly string[]): Promise<Ag
 	const args = parseCallParams(params);
 	try {
 		const result = await (await runtime()).callTool(selector.server, selector.toolName, { args });
-		return toolResult(truncateToolOutput(result), { tool, server: selector.server, toolName: selector.toolName, args });
+		const output = await truncateOutputForAgent(stringify(result), {
+			maxBytes: DEFAULT_MAX_BYTES,
+			maxLines: DEFAULT_MAX_LINES,
+		});
+		return toolResult(
+			output.text,
+			detailsWithOutput({ tool, server: selector.server, toolName: selector.toolName, args }, output),
+		);
 	} catch (error) {
 		const message = errorMessage(error);
 		return toolResult(`Error: ${message}`, { tool, args, error: message });
@@ -529,7 +602,7 @@ export default function (pi: ExtensionAPI) {
 		name: "mcp_search",
 		label: "MCP Search",
 		description:
-			"Search mcporter MCP servers. Every query word must fuzzy-match a tool name, description, or parameter.",
+			"Search mcporter MCP servers/tools by capability, name, description, or parameter. Multi-word queries return the closest partial matches.",
 		parameters: McpSearchParams,
 		async execute(_toolCallId, params) {
 			return toolResult(await searchMcporter(params.query, params.limit), {

@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.79.6",
+  "lastChangelogVersion": "0.79.7",
   "packages": [
     {
       "source": "npm:@plannotator/pi-extension",
@@ -11,7 +11,8 @@
         "-skills/plannotator-visual-explainer/SKILL.md"
       ]
     },
-    "npm:pi-rewind"
+    "npm:pi-rewind",
+    "npm:@ff-labs/pi-fff"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
