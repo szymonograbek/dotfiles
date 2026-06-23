@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.79.9",
+  "lastChangelogVersion": "0.79.10",
   "packages": [
     {
       "source": "npm:@plannotator/pi-extension",

@@ -11,8 +11,10 @@ function buildSessionNamingPrompt(sourceDescription: string, sourceText: string)
 	return `Create a short, human-readable Pi session name for ${sourceDescription}.
 
 Rules:
+- Capture the user's overarching intent across the whole conversation, not just the latest turn or final outcome
+- Synthesize the main goal from all user requests and assistant work; ignore incidental detours unless they became the primary goal
 - Capture the user's intent/action, not just the topic
-- Prefer verb-led names when the prompt asks to inspect, explain, debug, build, fix, refactor, or compare something
+- Prefer verb-led names when the conversation asks to inspect, explain, debug, build, fix, refactor, or compare something
 - Examples: "Explore Auto Session Name Extension", "Debug Login Redirect", "Refactor Billing Tests", "Compare Auth Providers"
 - 3 to 7 words
 - Title Case
