@@ -1,57 +1,91 @@
 import { DefaultResourceLoader, InteractiveMode, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const CONFIG_PATH = path.join(process.env.HOME ?? "", ".pi", "agent", "context-file-policy.json");
-const GLOBAL_AGENT_CONTEXT = path.join(process.env.HOME ?? "", ".pi", "agent", "AGENTS.md");
+const AGENT_DIR = path.join(process.env.HOME ?? "", ".pi", "agent");
+const CONFIG_PATH = path.join(AGENT_DIR, "context-file-policy.json");
+const GLOBAL_AGENT_CONTEXT = path.join(AGENT_DIR, "AGENTS.md");
+const OVERRIDES_DIR = path.join(AGENT_DIR, "context-file-overrides");
 
 type ContextPolicy = {
 	readonly allowedRepos: readonly string[];
 	readonly ignoredRepos: readonly string[];
+	readonly overriddenRepos: readonly string[];
 };
 
 type ContextPolicyDecision =
 	| { readonly kind: "allowed"; readonly source: "default" | "explicit" }
-	| { readonly kind: "ignored"; readonly source: "explicit" };
+	| { readonly kind: "ignored"; readonly source: "explicit" }
+	| { readonly kind: "overridden"; readonly source: "explicit" };
 
 type ContextFile = {
 	readonly path: string;
 	readonly content: string;
 };
 
+type ContextFileReplacement = {
+	readonly original: ContextFile;
+	readonly replacement: ContextFile;
+};
+
+type ContextFileActions = {
+	readonly strippedFiles: readonly ContextFile[];
+	readonly replacements: readonly ContextFileReplacement[];
+	readonly injectedFile: ContextFile | undefined;
+};
+
 export default function contextFilePolicyExtension(pi: ExtensionAPI) {
 	patchContextFileListing();
 
-	let ignoredFilesForRequest: readonly ContextFile[] = [];
+	let contextFileActionsForRequest: ContextFileActions = emptyContextFileActions();
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		ignoredFilesForRequest = await findIgnoredContextFiles(event.systemPromptOptions.contextFiles ?? [], ctx.cwd);
+		contextFileActionsForRequest = await findContextFileActions(event.systemPromptOptions.contextFiles ?? [], ctx.cwd);
 
-		if (ignoredFilesForRequest.length === 0) return;
+		if (!hasContextFileActions(contextFileActionsForRequest)) return;
 
 		return {
-			systemPrompt: stripContextFiles(event.systemPrompt, ignoredFilesForRequest),
+			systemPrompt: applyContextFileActionsToPrompt(event.systemPrompt, contextFileActionsForRequest),
 		};
 	});
 
 	pi.on("before_provider_request", (event) => {
-		if (ignoredFilesForRequest.length === 0) return;
-		return stripContextFilesFromPayload(event.payload, ignoredFilesForRequest);
+		if (!hasContextFileActions(contextFileActionsForRequest)) return;
+		return applyContextFileActionsToPayload(event.payload, contextFileActionsForRequest);
 	});
 
 	pi.registerCommand("context-files", {
-		description: "Toggle local AGENTS.md/CLAUDE.md loading. Usage: /context-files [status|allow|ignore|toggle]",
+		description: "Toggle local AGENTS.md/CLAUDE.md loading. Usage: /context-files [status|allow|ignore|override|toggle]",
 		handler: async (args, ctx) => {
 			await handleCommand(args, ctx);
 		},
 	});
 }
 
-async function findIgnoredContextFiles(contextFiles: readonly ContextFile[], cwd: string): Promise<readonly ContextFile[]> {
+async function findContextFileActions(contextFiles: readonly ContextFile[], cwd: string): Promise<ContextFileActions> {
 	const policy = await readPolicy();
 	const policyRoot = findRepoRoot(cwd) ?? normalizePath(cwd);
-	return contextFiles.filter((file) => shouldIgnoreContextFile(file, policyRoot, policy));
+	const decision = resolveContextPolicy(policyRoot, policy);
+	const policyFiles = contextFiles.filter((file) => isPolicyContextFile({ path: normalizeContextFilePath(file.path, cwd), content: file.content }, policyRoot));
+
+	if (decision.kind === "ignored") return { strippedFiles: policyFiles, replacements: [], injectedFile: undefined };
+	if (decision.kind !== "overridden") return emptyContextFileActions();
+
+	const overrideFile = await readOrCreateDefaultOverrideFile(policyRoot);
+	return {
+		strippedFiles: policyFiles,
+		replacements: [],
+		injectedFile: { path: overrideFile.path, content: overrideFile.content },
+	};
+}
+
+function emptyContextFileActions(): ContextFileActions {
+	return { strippedFiles: [], replacements: [], injectedFile: undefined };
+}
+
+function hasContextFileActions(actions: ContextFileActions): boolean {
+	return actions.strippedFiles.length > 0 || actions.replacements.length > 0 || actions.injectedFile !== undefined;
 }
 
 function patchContextFileListing(): void {
@@ -93,9 +127,18 @@ function patchInteractiveModeContextFiles(): void {
 
 function filterAgentsFilesResult(result: { readonly agentsFiles: readonly ContextFile[] }, cwd: string | undefined): { readonly agentsFiles: readonly ContextFile[] } {
 	const policy = readPolicySync();
-	return {
-		agentsFiles: result.agentsFiles.filter((file) => shouldShowContextFile(file, policy, cwd)),
-	};
+	const policyRoot = cwd === undefined ? undefined : findRepoRoot(cwd);
+	if (policyRoot === undefined) {
+		return { agentsFiles: result.agentsFiles.filter((file) => shouldShowContextFile(file, policy, cwd)) };
+	}
+
+	const decision = resolveContextPolicy(policyRoot, policy);
+	if (decision.kind !== "overridden") {
+		return { agentsFiles: result.agentsFiles.filter((file) => shouldShowContextFile(file, policy, cwd)) };
+	}
+
+	const globalFiles = result.agentsFiles.filter((file) => normalizeContextFilePath(file.path, cwd) === normalizePath(GLOBAL_AGENT_CONTEXT));
+	return { agentsFiles: [...globalFiles, readOrCreateDefaultOverrideFileSync(policyRoot)] };
 }
 
 function isPatchableResourceLoader(value: unknown): value is {
@@ -143,7 +186,8 @@ function shouldShowContextFile(file: ContextFile, policy: ContextPolicy, cwd: st
 	if (normalizedPath === normalizePath(GLOBAL_AGENT_CONTEXT)) return true;
 	const policyRoot = findRepoRoot(path.dirname(normalizedPath)) ?? (cwd === undefined ? undefined : findRepoRoot(cwd));
 	if (policyRoot === undefined) return true;
-	return !shouldIgnoreContextFile({ path: normalizedPath, content: file.content }, policyRoot, policy);
+	if (!isPolicyContextFile({ path: normalizedPath, content: file.content }, policyRoot)) return true;
+	return resolveContextPolicy(policyRoot, policy).kind === "allowed";
 }
 
 function normalizeContextFilePath(filePath: string, cwd: string | undefined): string {
@@ -152,7 +196,8 @@ function normalizeContextFilePath(filePath: string, cwd: string | undefined): st
 }
 
 async function handleCommand(args: string, ctx: ExtensionContext): Promise<void> {
-	const command = args.trim() || "toggle";
+	const commandArgs = parseCommandArgs(args);
+	const command = commandArgs.command;
 	const repoRoot = findRepoRoot(ctx.cwd) ?? normalizePath(ctx.cwd);
 	const policy = await readPolicy();
 	const decision = resolveContextPolicy(repoRoot, policy);
@@ -164,10 +209,11 @@ async function handleCommand(args: string, ctx: ExtensionContext): Promise<void>
 	}
 
 	if (command === "toggle") {
-		if (decision.kind === "allowed") {
+		if (decision.kind === "allowed" || decision.kind === "overridden") {
 			await writePolicy({
 				allowedRepos: removeEntry(policy.allowedRepos, repoRoot),
 				ignoredRepos: addUnique(policy.ignoredRepos, repoRoot),
+				overriddenRepos: removeEntry(policy.overriddenRepos, repoRoot),
 			});
 			ctx.ui.notify(`Ignored local context files for ${repoRoot}.`, "info");
 			return;
@@ -176,6 +222,7 @@ async function handleCommand(args: string, ctx: ExtensionContext): Promise<void>
 		await writePolicy({
 			allowedRepos: addUnique(policy.allowedRepos, repoRoot),
 			ignoredRepos: removeEntry(policy.ignoredRepos, repoRoot),
+			overriddenRepos: removeEntry(policy.overriddenRepos, repoRoot),
 		});
 		ctx.ui.notify(`Allowed local context files for ${repoRoot}.`, "info");
 		return;
@@ -185,6 +232,7 @@ async function handleCommand(args: string, ctx: ExtensionContext): Promise<void>
 		await writePolicy({
 			allowedRepos: addUnique(policy.allowedRepos, repoRoot),
 			ignoredRepos: removeEntry(policy.ignoredRepos, repoRoot),
+			overriddenRepos: removeEntry(policy.overriddenRepos, repoRoot),
 		});
 		ctx.ui.notify(`Allowed local context files for ${repoRoot}.`, "info");
 		return;
@@ -194,23 +242,130 @@ async function handleCommand(args: string, ctx: ExtensionContext): Promise<void>
 		await writePolicy({
 			allowedRepos: removeEntry(policy.allowedRepos, repoRoot),
 			ignoredRepos: addUnique(policy.ignoredRepos, repoRoot),
+			overriddenRepos: removeEntry(policy.overriddenRepos, repoRoot),
 		});
 		ctx.ui.notify(`Ignored local context files for ${repoRoot}.`, "info");
 		return;
 	}
 
-	ctx.ui.notify("Usage: /context-files [status|allow|ignore|toggle]", "warning");
+	if (command === "override") {
+		const overrideFile = await readOrCreateDefaultOverrideFile(repoRoot);
+		await writePolicy({
+			allowedRepos: removeEntry(policy.allowedRepos, repoRoot),
+			ignoredRepos: removeEntry(policy.ignoredRepos, repoRoot),
+			overriddenRepos: addUnique(policy.overriddenRepos, repoRoot),
+		});
+
+		const prefix = overrideFile.created ? "Created override file and enabled" : "Enabled";
+		ctx.ui.notify(`${prefix} context override for ${repoRoot}: ${overrideFile.path}.`, "info");
+		return;
+	}
+
+	ctx.ui.notify("Usage: /context-files [status|allow|ignore|override|toggle]", "warning");
+}
+
+type CommandArgs = {
+	readonly command: string;
+	readonly value: string | undefined;
+};
+
+function parseCommandArgs(args: string): CommandArgs {
+	const trimmedArgs = args.trim();
+	if (trimmedArgs === "") return { command: "toggle", value: undefined };
+
+	const separatorIndex = trimmedArgs.search(/\s/);
+	if (separatorIndex < 0) return { command: trimmedArgs, value: undefined };
+
+	return {
+		command: trimmedArgs.slice(0, separatorIndex),
+		value: trimmedArgs.slice(separatorIndex).trim() || undefined,
+	};
+}
+
+function getDefaultOverridePath(repoRoot: string): string {
+	return path.join(OVERRIDES_DIR, `${path.basename(repoRoot)}.md`);
+}
+
+type OverrideFile = {
+	readonly path: string;
+	readonly content: string;
+	readonly created: boolean;
+};
+
+async function readOrCreateDefaultOverrideFile(repoRoot: string): Promise<OverrideFile> {
+	const overridePath = getDefaultOverridePath(repoRoot);
+	if (existsSync(overridePath)) {
+		return { path: overridePath, content: await readFile(overridePath, "utf8"), created: false };
+	}
+
+	const seedContent = await readSeedContextFile(repoRoot);
+	await mkdir(path.dirname(overridePath), { recursive: true });
+	await writeFile(overridePath, seedContent, "utf8");
+	return { path: overridePath, content: seedContent, created: true };
+}
+
+function readOrCreateDefaultOverrideFileSync(repoRoot: string): OverrideFile {
+	const overridePath = getDefaultOverridePath(repoRoot);
+	if (existsSync(overridePath)) {
+		return { path: overridePath, content: readFileSync(overridePath, "utf8"), created: false };
+	}
+
+	const seedContent = readSeedContextFileSync(repoRoot);
+	mkdirSync(path.dirname(overridePath), { recursive: true });
+	writeFileSync(overridePath, seedContent, "utf8");
+	return { path: overridePath, content: seedContent, created: true };
+}
+
+async function readSeedContextFile(repoRoot: string): Promise<string> {
+	const repoAgentsPath = path.join(repoRoot, "AGENTS.md");
+	if (!existsSync(repoAgentsPath)) return "";
+	return readFile(repoAgentsPath, "utf8");
+}
+
+function readSeedContextFileSync(repoRoot: string): string {
+	const repoAgentsPath = path.join(repoRoot, "AGENTS.md");
+	if (!existsSync(repoAgentsPath)) return "";
+	return readFileSync(repoAgentsPath, "utf8");
 }
 
 function shouldIgnoreContextFile(file: ContextFile, policyRoot: string, policy: ContextPolicy): boolean {
-	if (normalizePath(file.path) === normalizePath(GLOBAL_AGENT_CONTEXT)) return false;
-	if (!isPathInside(file.path, policyRoot)) return false;
-	return resolveContextPolicy(policyRoot, policy).kind === "ignored";
+	return isPolicyContextFile(file, policyRoot) && resolveContextPolicy(policyRoot, policy).kind === "ignored";
 }
 
-function stripContextFiles(prompt: string, files: readonly ContextFile[]): string {
-	const withoutInstructions = files.reduce(stripContextFile, prompt);
-	return stripEmptyProjectContext(withoutInstructions);
+function isPolicyContextFile(file: ContextFile, policyRoot: string): boolean {
+	if (normalizePath(file.path) === normalizePath(GLOBAL_AGENT_CONTEXT)) return false;
+	return isPathInside(file.path, policyRoot);
+}
+
+function applyContextFileActionsToPrompt(prompt: string, actions: ContextFileActions): string {
+	const withReplacements = actions.replacements.reduce(replaceContextFile, prompt);
+	const withoutStrippedFiles = actions.strippedFiles.reduce(stripContextFile, withReplacements);
+	const withInjectedFile = actions.injectedFile === undefined ? withoutStrippedFiles : injectContextFile(withoutStrippedFiles, actions.injectedFile);
+	return stripEmptyProjectContext(withInjectedFile);
+}
+
+function injectContextFile(prompt: string, file: ContextFile): string {
+	if (prompt.includes(`path="${file.path}"`) || prompt.includes(file.content)) return prompt;
+
+	const block = `<project_instructions path="${file.path}">\n${file.content}\n</project_instructions>\n`;
+	const projectContextEnd = "</project_context>";
+	const projectContextEndIndex = prompt.indexOf(projectContextEnd);
+	if (projectContextEndIndex >= 0) return `${prompt.slice(0, projectContextEndIndex)}${block}\n${prompt.slice(projectContextEndIndex)}`;
+
+	return `${prompt}\n<project_context>\n\nProject-specific instructions and guidelines:\n\n${block}\n</project_context>\n`;
+}
+
+function replaceContextFile(prompt: string, replacement: ContextFileReplacement): string {
+	const exactBlock = `<project_instructions path="${replacement.original.path}">\n${replacement.original.content}\n</project_instructions>\n\n`;
+	const replacementBlock = `<project_instructions path="${replacement.replacement.path}">\n${replacement.replacement.content}\n</project_instructions>\n\n`;
+	const withExactBlock = prompt.replace(exactBlock, replacementBlock);
+	if (withExactBlock !== prompt) return withExactBlock;
+
+	return replaceContextFileByScanning(withExactBlock, replacement);
+}
+
+function replaceContextFileByScanning(prompt: string, replacement: ContextFileReplacement): string {
+	return transformContextFileByScanning(prompt, replacement.original, replacement.replacement);
 }
 
 function stripContextFile(prompt: string, file: ContextFile): string {
@@ -222,6 +377,10 @@ function stripContextFile(prompt: string, file: ContextFile): string {
 }
 
 function stripContextFileByScanning(prompt: string, file: ContextFile): string {
+	return transformContextFileByScanning(prompt, file, undefined);
+}
+
+function transformContextFileByScanning(prompt: string, original: ContextFile, replacement: ContextFile | undefined): string {
 	const openTag = "<project_instructions";
 	const closeTag = "</project_instructions>";
 	let remaining = prompt;
@@ -242,9 +401,14 @@ function stripContextFileByScanning(prompt: string, file: ContextFile): string {
 		const before = remaining.slice(0, openStart);
 		const openLine = remaining.slice(openStart, openEnd + 1);
 		const content = remaining.slice(openEnd + 2, closeStart);
-		const shouldStrip = openLine.includes(`path="${file.path}"`) || content === file.content;
+		const shouldTransform = openLine.includes(`path="${original.path}"`) || content === original.content;
 
-		result += shouldStrip ? before : remaining.slice(0, blockEnd);
+		if (shouldTransform && replacement !== undefined) {
+			result += `${before}<project_instructions path="${replacement.path}">\n${replacement.content}\n</project_instructions>\n\n`;
+		} else {
+			result += shouldTransform ? before : remaining.slice(0, blockEnd);
+		}
+
 		remaining = remaining.slice(blockEnd);
 	}
 }
@@ -254,12 +418,12 @@ function stripEmptyProjectContext(prompt: string): string {
 	return prompt.replace(emptyBlock, "");
 }
 
-function stripContextFilesFromPayload(payload: unknown, files: readonly ContextFile[]): unknown {
-	if (typeof payload === "string") return stripContextFiles(payload, files);
-	if (Array.isArray(payload)) return payload.map((item) => stripContextFilesFromPayload(item, files));
+function applyContextFileActionsToPayload(payload: unknown, actions: ContextFileActions): unknown {
+	if (typeof payload === "string") return applyContextFileActionsToPrompt(payload, actions);
+	if (Array.isArray(payload)) return payload.map((item) => applyContextFileActionsToPayload(item, actions));
 	if (!isRecord(payload)) return payload;
 
-	return Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, stripContextFilesFromPayload(value, files)]));
+	return Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, applyContextFileActionsToPayload(value, actions)]));
 }
 
 function findRepoRoot(startDir: string): string | undefined {
@@ -300,6 +464,7 @@ function parsePolicy(value: unknown): ContextPolicy {
 	return {
 		allowedRepos: parseRepoList(value.allowedRepos),
 		ignoredRepos: parseRepoList(value.ignoredRepos),
+		overriddenRepos: parseRepoList(value.overriddenRepos),
 	};
 }
 
@@ -308,12 +473,13 @@ function parseRepoList(value: unknown): readonly string[] {
 }
 
 function emptyPolicy(): ContextPolicy {
-	return { allowedRepos: [], ignoredRepos: [] };
+	return { allowedRepos: [], ignoredRepos: [], overriddenRepos: [] };
 }
 
 function resolveContextPolicy(repoRoot: string, policy: ContextPolicy): ContextPolicyDecision {
 	const normalizedRepoRoot = normalizePath(repoRoot);
 	if (policy.ignoredRepos.includes(normalizedRepoRoot)) return { kind: "ignored", source: "explicit" };
+	if (policy.overriddenRepos.includes(normalizedRepoRoot)) return { kind: "overridden", source: "explicit" };
 	if (policy.allowedRepos.includes(normalizedRepoRoot)) return { kind: "allowed", source: "explicit" };
 	return { kind: "allowed", source: "default" };
 }

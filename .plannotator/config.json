@@ -1,7 +1,7 @@
 {
   "prompts": {
     "review": {
-      "denied": "\n\nThe findings above came from an automated review of the current changes. Triage each incoming finding — open the code it points at and give a verdict (Confirmed / Partly / Not a bug / Intended) with evidence (file:line + what the code actually does). Say whether it's introduced by these changes, pre-existing, or a deliberate scope decision. Rank by real user impact.\n\nFor each real issue, describe it concretely in plain language: the exact place it lives and the real-world trigger that hits it — the specific call, endpoint, command, input, or user action — plus the state or conditions under which it goes wrong. Not an abstract description.\n\nDo not change any code until we've discussed the findings."
+      "denied": "\n\nThe feedback above came from the user's code review of the current changes. Triage each incoming item — open the code it points at and give a verdict (Confirmed / Partly / Not applicable / Intended) with evidence (file:line + what the code actually does). Say whether it's introduced by these changes, pre-existing, or a deliberate scope decision. Rank by user impact.\n\nFor each item that should be acted on, describe it concretely in plain language: the exact place it lives and the real-world trigger, workflow, command, input, or user action involved — plus the state or conditions where it matters. Not an abstract description.\n\nDo not change any code until we've discussed the feedback."
     }
   }
 }

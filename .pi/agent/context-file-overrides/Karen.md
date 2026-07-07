@@ -1,0 +1,3 @@
+- When creating new screens, stores, or services, always inspect existing patterns first and follow the established conventions.
+- For pressable handlers, use the `useInteractionCallback` hook.
+- Do not use `Container.resolve` inside components; keep dependency resolution in stores.
