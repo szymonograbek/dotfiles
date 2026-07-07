@@ -2,6 +2,7 @@ import { complete, type Message } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const MAX_SESSION_NAME_LENGTH = 60;
+const FOLLOW_UP_AUTO_RENAME_MESSAGE_COUNT = 5;
 
 function buildConversationNamingPrompt(conversation: string): string {
 	return buildSessionNamingPrompt("this Pi session conversation", conversation);
@@ -52,23 +53,6 @@ function extractText(response: Awaited<ReturnType<typeof complete>>): string {
 		.join("\n");
 }
 
-function getConversationStats(ctx: ExtensionContext): { userMessages: number; assistantMessages: number } {
-	const messages = ctx.sessionManager
-		.getBranch()
-		.flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
-		.filter((message) => message.role === "user" || message.role === "assistant");
-
-	return {
-		userMessages: messages.filter((message) => message.role === "user").length,
-		assistantMessages: messages.filter((message) => message.role === "assistant").length,
-	};
-}
-
-function isFirstConversationTurn(ctx: ExtensionContext): boolean {
-	const stats = getConversationStats(ctx);
-	return stats.userMessages <= 1 && stats.assistantMessages === 0;
-}
-
 function extractUserText(content: Message & { role: "user" }): string {
 	if (typeof content.content === "string") return content.content;
 	return content.content
@@ -84,9 +68,49 @@ function extractAssistantText(content: Message & { role: "assistant" }): string 
 		.join("\n");
 }
 
+function isToolCallAssistantMessage(message: Message & { role: "assistant" }): boolean {
+	return message.stopReason === "toolUse" || message.content.some((part) => part.type === "toolCall");
+}
+
+function isCountableConversationMessage(message: Message & { role: "user" | "assistant" }): boolean {
+	if (message.role === "user") return extractUserText(message).trim().length > 0;
+	return !isToolCallAssistantMessage(message) && extractAssistantText(message).trim().length > 0;
+}
+
+interface ConversationStats {
+	conversationMessages: number;
+	userMessages: number;
+	assistantMessages: number;
+}
+
+function getConversationStats(ctx: ExtensionContext): ConversationStats {
+	const messages = ctx.sessionManager.getEntries().flatMap((entry) => {
+		if (entry.type !== "message") return [];
+
+		const message = entry.message;
+		if (message.role !== "user" && message.role !== "assistant") return [];
+		return isCountableConversationMessage(message) ? [message] : [];
+	});
+
+	return {
+		conversationMessages: messages.length,
+		userMessages: messages.filter((message) => message.role === "user").length,
+		assistantMessages: messages.filter((message) => message.role === "assistant").length,
+	};
+}
+
+function hasConversationStarted(stats: ConversationStats): boolean {
+	return stats.userMessages > 0 || stats.assistantMessages > 0;
+}
+
+function isFirstConversationTurn(ctx: ExtensionContext): boolean {
+	const stats = getConversationStats(ctx);
+	return stats.userMessages <= 1 && stats.assistantMessages === 0;
+}
+
 function buildConversationText(ctx: ExtensionContext): string {
 	return ctx.sessionManager
-		.getBranch()
+		.getEntries()
 		.flatMap((entry) => {
 			if (entry.type !== "message") return [];
 
@@ -96,6 +120,7 @@ function buildConversationText(ctx: ExtensionContext): string {
 				return text ? [`User: ${text}`] : [];
 			}
 			if (message.role === "assistant") {
+				if (!isCountableConversationMessage(message)) return [];
 				const text = extractAssistantText(message);
 				return text ? [`Assistant: ${text}`] : [];
 			}
@@ -160,10 +185,14 @@ function errorMessage(error: unknown): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	let attemptedForCurrentSession = false;
+	let attemptedInitialNameForCurrentSession = false;
+	let attemptedFollowUpNameForCurrentSession = false;
 
-	pi.on("session_start", () => {
-		attemptedForCurrentSession = false;
+	pi.on("session_start", (_event, ctx) => {
+		const stats = getConversationStats(ctx);
+
+		attemptedInitialNameForCurrentSession = hasConversationStarted(stats);
+		attemptedFollowUpNameForCurrentSession = stats.conversationMessages >= FOLLOW_UP_AUTO_RENAME_MESSAGE_COUNT;
 	});
 
 	pi.registerCommand("auto-name", {
@@ -193,21 +222,37 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("message_end", (event, ctx) => {
-		if (event.message.role !== "user") return;
-		if (attemptedForCurrentSession) return;
-		if (!isFirstConversationTurn(ctx)) return;
+		if (event.message.role === "user" && !attemptedInitialNameForCurrentSession && isFirstConversationTurn(ctx)) {
+			const userText = extractUserText(event.message);
+			const conversation = userText ? `User: ${userText}` : buildConversationText(ctx);
+			if (!conversation.trim()) return;
 
-		const userText = extractUserText(event.message);
-		const conversation = userText ? `User: ${userText}` : buildConversationText(ctx);
+			attemptedInitialNameForCurrentSession = true;
+
+			void generateSessionName(buildConversationNamingPrompt(conversation), ctx)
+				.then((sessionName) => {
+					if (!sessionName) return;
+					pi.setSessionName(sessionName);
+					ctx.ui.notify(`Session named: ${sessionName}`, "info");
+				})
+				.catch(() => undefined);
+		}
+
+		if (event.message.role !== "user" && event.message.role !== "assistant") return;
+		if (!isCountableConversationMessage(event.message)) return;
+		if (attemptedFollowUpNameForCurrentSession) return;
+		if (getConversationStats(ctx).conversationMessages < FOLLOW_UP_AUTO_RENAME_MESSAGE_COUNT) return;
+
+		const conversation = buildConversationText(ctx);
 		if (!conversation.trim()) return;
 
-		attemptedForCurrentSession = true;
+		attemptedFollowUpNameForCurrentSession = true;
 
 		void generateSessionName(buildConversationNamingPrompt(conversation), ctx)
 			.then((sessionName) => {
 				if (!sessionName) return;
 				pi.setSessionName(sessionName);
-				ctx.ui.notify(`Session named: ${sessionName}`, "info");
+				ctx.ui.notify(`Session renamed: ${sessionName}`, "info");
 			})
 			.catch(() => undefined);
 	});

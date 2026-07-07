@@ -54,6 +54,9 @@
 - **No repetition**: Same/similar code repeated → extract abstraction
 - **Clear names**: If name is vague or hard to choose, underlying design likely unclear
 - **Clear code**: Meaning understandable on quick read; if not, refactor
+- **Readability over conciseness**: Prefer code that is easy to follow over code that is shorter
+- **Code padding**: Add blank lines between distinct logical blocks to make structure easier to scan
+- **Human-readable control flow**: Avoid `await` inside conditions; name the awaited result first, then branch on it
 - **Useful comments**: Don't repeat what code says; interface docs shouldn't expose implementation details
 
 ## Scope Control

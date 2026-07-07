@@ -33,11 +33,12 @@ Turn already-finished local work into a reviewable PR and updated Jira ticket. P
    - Check uncommitted changes.
    - Check current commit/change name.
    - Inspect recent local branch and commit names to infer repo naming patterns.
+   - Also inspect recent commits on the base branch before choosing or rewriting a commit/change name; use those existing base-branch commit subjects as the primary naming convention signal.
 4. Validate review readiness:
    - Confirm the work is on a feature branch, not a protected/base branch such as `main`, `master`, `develop`, or `trunk`.
    - Ensure all intended changes are committed. If dirty, ask whether to commit them or leave them out; do not edit files to resolve dirty state.
    - Ensure branch/bookmark name includes the Jira key and follows the repo's observed naming pattern.
-   - Ensure the current commit/change name includes the Jira key and follows the repo's observed pattern.
+   - Ensure the current commit/change name includes the Jira key and follows the repo's observed pattern, prioritizing the naming style observed in recent base-branch commits over the local feature branch if they differ.
    - Before renaming branches/bookmarks, rewriting commits, or amending messages, state the planned change and ask if it is materially destructive or ambiguous.
    - If tests, lint, typecheck, merge status, or manual inspection reveal failures, stop and report them. Do not fix them under this skill.
 5. Read Jira:
@@ -75,6 +76,6 @@ Turn already-finished local work into a reviewable PR and updated Jira ticket. P
 ## Command guidance
 
 - Always check for `.jj/` before VCS commands.
-- For `jj`, prefer `jj status`, `jj log`, `jj bookmark list`, `jj describe`, and `jj git push` as appropriate.
-- For `git`, prefer `git status --short --branch`, `git branch --show-current`, `git log --oneline -n 20`, and `git push -u origin HEAD` as appropriate.
+- For `jj`, prefer `jj status`, `jj log`, `jj bookmark list`, `jj describe`, `jj log -r 'ancestors(main, 20)'` or the repo's actual base bookmark, and `jj git push` as appropriate.
+- For `git`, prefer `git status --short --branch`, `git branch --show-current`, `git log --oneline -n 20`, `git log --oneline origin/main -n 20` or the repo's actual base branch, and `git push -u origin HEAD` as appropriate.
 - Use `gh pr view --json url` before creating a PR.
