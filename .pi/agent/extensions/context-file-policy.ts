@@ -419,11 +419,16 @@ function stripEmptyProjectContext(prompt: string): string {
 }
 
 function applyContextFileActionsToPayload(payload: unknown, actions: ContextFileActions): unknown {
-	if (typeof payload === "string") return applyContextFileActionsToPrompt(payload, actions);
+	if (typeof payload === "string") return applyContextFileActionsToPayloadString(payload, actions);
 	if (Array.isArray(payload)) return payload.map((item) => applyContextFileActionsToPayload(item, actions));
 	if (!isRecord(payload)) return payload;
 
 	return Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, applyContextFileActionsToPayload(value, actions)]));
+}
+
+function applyContextFileActionsToPayloadString(value: string, actions: ContextFileActions): string {
+	if (!value.includes("<project_context>") && !value.includes("<project_instructions")) return value;
+	return applyContextFileActionsToPrompt(value, actions);
 }
 
 function findRepoRoot(startDir: string): string | undefined {
