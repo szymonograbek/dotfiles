@@ -9,7 +9,7 @@ Runs isolated Pi sessions in terminal surfaces and returns their final responses
 - `domain.ts` — shared domain types and status helpers.
 - `store.ts` — session state, persistence restoration, and cancellation handles.
 - `agent-runtime.ts` — Pi session/model/launcher/result protocol and owned artifact paths.
-- `child-runtime.ts` — child process lifecycle and operator-detachment reporting.
+- `child-runtime.ts` — child process lifecycle and operator-interaction tracking.
 - `orchestrator.ts` — launch, wait, collect, and cleanup workflow.
 - `validation.ts` — shared TypeBox-backed runtime validation.
 - `ui.ts` — activity projection, status widget, and manager modal.
@@ -27,7 +27,7 @@ The Herdr adapter is bound at composition time to `HERDR_WORKSPACE_ID`, captured
 
 The child writes its outcome to a private staging file. The launcher publishes that outcome atomically only after Pi exits, so the parent cannot tear down a child before graceful shutdown finishes. If Pi exits without an outcome, the launcher publishes a failure instead.
 
-Typing into a running child detaches it from the parent tool call. The parent reports the detachment but retains the terminal surface for interactive use until it is closed or the parent session shuts down.
+Interrupting or steering a running child keeps the parent tool call waiting. The child publishes only after it produces a non-aborted response and fully settles, so the parent receives the final response including the operator-guided work. An aborted child with no follow-up remains open and waiting.
 
 Temporary artifact paths are generated for fresh runs and are never restored from session data. Model-visible aggregate output uses Pi's standard 50 KB/2,000-line truncation while full responses remain in persisted child sessions and tool details.
 

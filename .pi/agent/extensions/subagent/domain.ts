@@ -14,7 +14,7 @@ export type AgentRequest = {
 	thinkingLevel: ThinkingLevel;
 };
 
-export type SubagentStatus = "queued" | "starting" | "working" | "completed" | "failed" | "stopped" | "detached";
+export type SubagentStatus = "queued" | "starting" | "working" | "completed" | "failed" | "stopped";
 
 export type SubagentRecord = AgentRequest & {
 	id: string;
@@ -35,7 +35,7 @@ export type SubagentRecord = AgentRequest & {
 
 export type ChildResult =
 	| { status: "completed" }
-	| { status: "failed" | "stopped" | "detached"; error: string };
+	| { status: "failed" | "stopped"; error: string };
 
 export type SubagentDetails = { agents: SubagentRecord[] };
 export type TextUpdate = { content: Array<{ type: "text"; text: string }>; details: SubagentDetails };
@@ -54,7 +54,6 @@ export function statusLabel(status: SubagentStatus): string {
 	if (status === "working" || status === "starting") return "Working";
 	if (status === "failed") return "Failed";
 	if (status === "stopped") return "Stopped";
-	if (status === "detached") return "Detached";
 	return "Not started";
 }
 

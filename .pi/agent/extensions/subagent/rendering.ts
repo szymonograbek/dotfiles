@@ -40,10 +40,8 @@ export function renderCollapsedResult(result: { readonly details?: SubagentDetai
 	const agents = result.details?.agents ?? [];
 	const completed = agents.filter((agent) => agent.status === "completed").length;
 	const failed = agents.filter((agent) => agent.status === "failed" || agent.status === "stopped").length;
-	const detached = agents.filter((agent) => agent.status === "detached").length;
 	const parts = [`${completed} completed`];
 	if (failed > 0) parts.push(`${failed} failed/stopped`);
-	if (detached > 0) parts.push(`${detached} detached`);
 	return new Text(theme.fg("toolOutput", `Agents · ${parts.join(" · ")}`), 0, 0);
 }
 

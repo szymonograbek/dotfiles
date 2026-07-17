@@ -102,7 +102,6 @@ function statusDot(status: SubagentStatus, theme: Theme): string {
 	if (status === "working" || status === "starting") return theme.fg("warning", "●");
 	if (status === "failed") return theme.fg("error", "●");
 	if (status === "stopped") return theme.fg("muted", "■");
-	if (status === "detached") return theme.fg("accent", "◆");
 	return " ";
 }
 

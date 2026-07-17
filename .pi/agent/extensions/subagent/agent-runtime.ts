@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { Check } from "typebox/value";
-import { CHILD_ENV, CHILD_OUTCOME_FILE_ENV, CHILD_SIGNAL_FILE_ENV } from "./child-runtime.ts";
+import { CHILD_ENV, CHILD_OUTCOME_FILE_ENV } from "./child-runtime.ts";
 import { TOOL_NAME, truncateTask, type AgentRequest, type ChildResult, type SubagentRecord } from "./domain.ts";
 import type { ProcessCommand } from "./terminal/terminal-host.ts";
 import { finalResponseFromMessages } from "./validation.ts";
@@ -14,7 +14,7 @@ import { finalResponseFromMessages } from "./validation.ts";
 const ChildResultSchema = Type.Union([
 	Type.Object({ status: Type.Literal("completed") }),
 	Type.Object({
-		status: Type.Union([Type.Literal("failed"), Type.Literal("stopped"), Type.Literal("detached")]),
+		status: Type.Union([Type.Literal("failed"), Type.Literal("stopped")]),
 		error: Type.String(),
 	}),
 ]);
@@ -80,7 +80,6 @@ export function createChildLauncher(
 	const environment = [
 		`${CHILD_ENV}=1`,
 		`${CHILD_OUTCOME_FILE_ENV}=${shellQuote(childOutcomeFile)}`,
-		`${CHILD_SIGNAL_FILE_ENV}=${shellQuote(record.resultFile)}`,
 	];
 	const command = `env ${environment.join(" ")} ${args.map(shellQuote).join(" ")}`;
 	const fallbackResult = JSON.stringify({

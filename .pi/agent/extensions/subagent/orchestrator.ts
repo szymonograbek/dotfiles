@@ -41,7 +41,6 @@ export class SubagentOrchestrator {
 		index: number,
 		total: number,
 	): Promise<string> {
-		let retainSurface = false;
 		updateProgress(index, "starting in terminal");
 		signal.throwIfAborted();
 		try {
@@ -55,16 +54,13 @@ export class SubagentOrchestrator {
 				return result || `${agentLabel(index, total)} completed without a final text response.`;
 			}
 
-			if (childResult.status === "detached") retainSurface = true;
 			this.store.update(record.id, { status: childResult.status, error: childResult.error, result });
 			updateProgress(index, childResult.status);
 			const summary = `${agentLabel(index, total)} ${childResult.status}: ${childResult.error}`;
 			return result === "" ? summary : `${summary}\n\nPartial output:\n${result}`;
 		} finally {
-			if (!retainSurface) {
-				const closed = await this.closeSurface(record.id, this.store.get(record.id)?.terminalSurfaceId);
-				if (closed) this.removeArtifacts(record);
-			}
+			const closed = await this.closeSurface(record.id, this.store.get(record.id)?.terminalSurfaceId);
+			if (closed) this.removeArtifacts(record);
 		}
 	}
 
