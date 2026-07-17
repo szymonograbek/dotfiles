@@ -283,7 +283,7 @@ function parseCommandArgs(args: string): CommandArgs {
 }
 
 function getDefaultOverridePath(repoRoot: string): string {
-	return path.join(OVERRIDES_DIR, `${path.basename(repoRoot)}.md`);
+	return path.join(OVERRIDES_DIR, `${getRepoName(repoRoot)}.md`);
 }
 
 type OverrideFile = {
@@ -482,11 +482,70 @@ function emptyPolicy(): ContextPolicy {
 }
 
 function resolveContextPolicy(repoRoot: string, policy: ContextPolicy): ContextPolicyDecision {
-	const normalizedRepoRoot = normalizePath(repoRoot);
-	if (policy.ignoredRepos.includes(normalizedRepoRoot)) return { kind: "ignored", source: "explicit" };
-	if (policy.overriddenRepos.includes(normalizedRepoRoot)) return { kind: "overridden", source: "explicit" };
-	if (policy.allowedRepos.includes(normalizedRepoRoot)) return { kind: "allowed", source: "explicit" };
+	if (hasRepoEntry(policy.ignoredRepos, repoRoot)) return { kind: "ignored", source: "explicit" };
+	if (hasRepoEntry(policy.overriddenRepos, repoRoot)) return { kind: "overridden", source: "explicit" };
+	if (hasRepoEntry(policy.allowedRepos, repoRoot)) return { kind: "allowed", source: "explicit" };
 	return { kind: "allowed", source: "default" };
+}
+
+function hasRepoEntry(values: readonly string[], repoRoot: string): boolean {
+	const repoIdentity = getRepoIdentity(repoRoot);
+	const matchingName = values.some((entry) => getRepoIdentity(entry) === repoIdentity);
+	if (matchingName) return true;
+
+	const normalizedRepoRoot = normalizePath(repoRoot);
+	return values.includes(normalizedRepoRoot);
+}
+
+function getRepoIdentity(repoRoot: string): string {
+	return getRepoName(repoRoot).toLowerCase();
+}
+
+function getRepoName(repoRoot: string): string {
+	const remoteName = readGitRemoteName(repoRoot);
+	return remoteName ?? path.basename(normalizePath(repoRoot));
+}
+
+function readGitRemoteName(repoRoot: string): string | undefined {
+	const gitPath = path.join(normalizePath(repoRoot), ".git");
+	let configPath = path.join(gitPath, "config");
+
+	try {
+		const gitFile = readFileSync(gitPath, "utf8").trim();
+		const prefix = "gitdir:";
+		if (gitFile.startsWith(prefix)) {
+			const gitDir = gitFile.slice(prefix.length).trim();
+			configPath = path.join(path.resolve(repoRoot, gitDir), "config");
+		}
+	} catch {
+		// A regular clone has a .git directory rather than a gitdir file.
+	}
+
+	try {
+		const config = readFileSync(configPath, "utf8");
+		let isOriginSection = false;
+
+		for (const line of config.split("\n")) {
+			const trimmedLine = line.trim();
+			if (trimmedLine.startsWith("[")) {
+				isOriginSection = trimmedLine === '[remote "origin"]';
+				continue;
+			}
+			if (!isOriginSection) continue;
+
+			const remoteUrl = trimmedLine.match(/^url\s*=\s*(.+)$/)?.[1]?.trim();
+			if (remoteUrl === undefined) continue;
+
+			const remotePath = remoteUrl.replace(/[\\/]$/, "");
+			const lastSeparator = Math.max(remotePath.lastIndexOf("/"), remotePath.lastIndexOf(":"));
+			const name = remotePath.slice(lastSeparator + 1).replace(/\.git$/, "");
+			return name || undefined;
+		}
+
+		return undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function addUnique(values: readonly string[], value: string): readonly string[] {
@@ -495,8 +554,8 @@ function addUnique(values: readonly string[], value: string): readonly string[] 
 }
 
 function removeEntry(values: readonly string[], value: string): readonly string[] {
-	const normalizedValue = normalizePath(value);
-	return values.filter((entry) => entry !== normalizedValue);
+	const repoIdentity = getRepoIdentity(value);
+	return values.filter((entry) => getRepoIdentity(entry) !== repoIdentity && normalizePath(entry) !== normalizePath(value));
 }
 
 function isPathInside(candidate: string, parent: string): boolean {

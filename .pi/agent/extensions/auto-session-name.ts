@@ -3,6 +3,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 const MAX_SESSION_NAME_LENGTH = 60;
 const FOLLOW_UP_AUTO_RENAME_MESSAGE_COUNT = 5;
+const SESSION_NAME_MODEL_PROVIDER = "openai-codex";
+const SESSION_NAME_MODEL_ID = "gpt-5.6-luna";
 
 function buildConversationNamingPrompt(conversation: string): string {
 	return buildSessionNamingPrompt("this Pi session conversation", conversation);
@@ -130,9 +132,12 @@ function buildConversationText(ctx: ExtensionContext): string {
 }
 
 async function generateSessionName(prompt: string, ctx: ExtensionContext): Promise<string | undefined> {
-	const model = ctx.model;
+	const model = ctx.modelRegistry.find(SESSION_NAME_MODEL_PROVIDER, SESSION_NAME_MODEL_ID);
 	if (!model) {
-		ctx.ui.notify("auto-session-name: no current model selected", "warning");
+		ctx.ui.notify(
+			`auto-session-name: model ${SESSION_NAME_MODEL_PROVIDER}/${SESSION_NAME_MODEL_ID} not found`,
+			"warning",
+		);
 		return undefined;
 	}
 

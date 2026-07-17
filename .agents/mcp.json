@@ -20,6 +20,10 @@
     "argent": {
       "command": "argent",
       "args": ["mcp"]
+    },
+    "apple-mail": {
+      "command": "npx",
+      "args": ["apple-mail-mcp"]
     }
   }
 }

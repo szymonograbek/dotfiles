@@ -1,3 +1,37 @@
 - When creating new screens, stores, or services, always inspect existing patterns first and follow the established conventions.
-- For pressable handlers, use the `useInteractionCallback` hook.
-- Do not use `Container.resolve` inside components; keep dependency resolution in stores.
+- Search for and reuse existing hooks, helpers, service getters, shared components, store lifecycles, analytics patterns, theme tokens, i18n, and date-formatting utilities before introducing a new approach.
+- Prefer the simplest direct implementation.
+- Remove unnecessary wrappers, effects, local state, branches, timers, aliases, and one-off abstractions.
+- Keep responsibilities with their correct owner: business behavior in models or services, UI state, lifecycle, and dependency resolution in stores, and rendering in components.
+- Keep service contract types in the service interface file and service namespace; do not declare contract types in implementation files.
+- Screens should not depend on service implementation details.
+- Components must not import another feature's store or call `Container.resolve`.
+- Colocate feature-specific components with their owning feature.
+- When extracting component-local code, follow the repository layout: `*.types.ts`, `*.utils.ts`, `*.styles.ts`, and `components/<Name>/`; keep each subcomponent's styles and types with that subcomponent.
+- Promote feature-specific components to shared code only when reuse is proven.
+- Model finite domain states explicitly with enums or discriminated unions instead of loose strings or combinations of booleans.
+- Handle every valid domain state exhaustively and make impossible states unrepresentable.
+- Keep public APIs small and truthful.
+- Use names that describe actual values or behavior; avoid redundant interfaces, aliases, and speculative parameters.
+- Verify backend and SDK assumptions before encoding them.
+- Check nullability, edge cases, lifecycle transitions, state reset or persistence, awaited async work, and failure-path logging or analytics.
+- Match Figma and native platform behavior precisely, including spacing, typography, iconography, sizing, keyboard avoidance, and iOS/Android differences.
+- For images with transparency that should blend into the background, set `mixBlendMode: 'multiply'` on the `Image` and `backgroundColor` on an opaque container or ancestor, never both on the image itself. Prefer an explicit `imageContainer` wrapper.
+- Optimize image assets before adding them and prefer WebP over larger source formats when supported.
+- Do not add transitions or animations unless the design or existing pattern requires them.
+- When creating a new screen, add `useScreenViewTracking`.
+- When adding new interactions or features, propose relevant analytics events, but do not implement them unless explicitly requested.
+- For analytics tracking, prefer the analytics decorator on an existing store method.
+- Do not create an empty store method solely to attach an analytics decorator; use the hook when there is no suitable store method.
+- For pressable handlers, use the `useInteractionCallback` hook once at the top level where the handler is defined, then pass the wrapped callback down through props unchanged.
+- Do not re-wrap pressable handlers in intermediary or leaf components.
+- When a store method uses `@action.bound`, pass it directly to `useInteractionCallback` instead of wrapping it in an arrow function, for example: `useInteractionCallback(callSessionStore.toggleMute, [callSessionStore])`.
+- In prop types, `() => any` is acceptable; do not require `() => void | Promise<void>`.
+- Accessibility props are not required for now.
+- For state-dependent styles, pass parameters such as `isPressed` to the `useStyles` hook instead of using inline ternaries in the component.
+- Prefer Lodash utilities when they simplify an implementation.
+- When using Argent, default to the iOS simulator and the `ai.44px.karen-beta` app.
+- Use Android only for Android-specific tasks.
+- For login, use `TEST_EMAIL` from the environment or the git-ignored `.env.local`, and retrieve the OTP through the mail MCP.
+- Do not expose the login email address or OTP in responses.
+- Run these two verification commands: `yarn lint:fix` and `yarn lint:ts`.

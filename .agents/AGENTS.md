@@ -34,7 +34,14 @@
 ## Tooling
 
 - Prefer dedicated read/search/edit tools over shell when available
+- `ff` tools do not search files or directories ignored by Git; use other tools for ignored paths
 - Batch independent reads/searches; parallelize when safe
+- Offload heavy, self-contained tasks to subagents; choose an appropriate model and thinking level
+- Choose the subagent model based on task complexity:
+  - `gpt-5.6-sol`: top-tier reasoning for the hardest tasks
+  - `gpt-5.6-terra`: medium-tier reasoning for moderately complex tasks
+  - `gpt-5.6-luna`: low-cost reasoning for simple lookups and mechanical tasks
+- Default to medium thinking for a good quality/cost balance; use higher levels only for genuinely difficult tasks
 - Read enough context before editing; avoid thrashing
 - After edits, run a lightweight verification step when relevant
 

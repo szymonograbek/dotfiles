@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 type UsageWindow = {
 	used_percent?: number | null;
+	limit_window_seconds?: number | null;
 	reset_after_seconds?: number | null;
 	reset_at?: number | null;
 };
@@ -21,8 +22,9 @@ type CodexUsageResponse = {
 };
 
 type UsageSnapshot = {
-	fiveHourUsedPercent: number | null;
-	fiveHourResetSeconds: number | null;
+	usedPercent: number | null;
+	windowSeconds: number | null;
+	resetSeconds: number | null;
 	isLimited: boolean;
 };
 
@@ -57,8 +59,10 @@ export default function (pi: ExtensionAPI) {
 		refreshing = true;
 		try {
 			const codex = await readCodexUsage();
+			if (activeCtx !== ctx) return;
 			ctx.ui.setStatus(EXTENSION_ID, formatStatus(ctx, codex));
 		} catch (error) {
+			if (activeCtx !== ctx) return;
 			ctx.ui.setStatus(EXTENSION_ID, ctx.ui.theme.fg("warning", `Codex usage unavailable: ${formatError(error)}`));
 		} finally {
 			refreshing = false;
@@ -92,6 +96,7 @@ export default function (pi: ExtensionAPI) {
 		if (timer) clearInterval(timer);
 		timer = undefined;
 		activeCtx = undefined;
+		queued = false;
 	});
 
 	pi.registerCommand("usage-limits", {
@@ -135,10 +140,11 @@ function parseCodexUsage(value: unknown): UsageSnapshot | null {
 	const response = asCodexUsageResponse(value);
 	const bucket = asRateLimitBucket(response?.rate_limit);
 	if (!bucket) return null;
-	const fiveHour = bucket.primary_window;
+	const primaryWindow = bucket.primary_window;
 	return {
-		fiveHourUsedPercent: readPercent(fiveHour?.used_percent),
-		fiveHourResetSeconds: readResetSeconds(fiveHour),
+		usedPercent: readPercent(primaryWindow?.used_percent),
+		windowSeconds: readNumber(primaryWindow?.limit_window_seconds),
+		resetSeconds: readResetSeconds(primaryWindow),
 		isLimited: bucket.limit_reached === true || bucket.allowed === false,
 	};
 }
@@ -147,18 +153,21 @@ function formatStatus(ctx: ExtensionContext, codex: UsageSnapshot | null): strin
 	const theme = ctx.ui.theme;
 	const codexLabel = codex?.isLimited ? theme.fg("error", "Codex") : theme.fg("dim", "Codex");
 	return codex
-		? formatProviderWindow(theme, codexLabel, codex.fiveHourUsedPercent, codex.fiveHourResetSeconds)
+		? formatProviderWindow(theme, codexLabel, codex.windowSeconds, codex.usedPercent, codex.resetSeconds)
 		: `${theme.fg("dim", "Codex")} ${theme.fg("muted", UNKNOWN)}`;
 }
 
 function formatProviderWindow(
 	theme: ExtensionContext["ui"]["theme"],
 	label: string,
+	windowSeconds: number | null,
 	usedPercent: number | null,
 	resetSeconds: number | null,
 ): string {
+	const window = formatDuration(windowSeconds);
+	const windowLabel = window ? ` ${theme.fg("dim", `(${window})`)}` : "";
 	const reset = formatReset(theme, resetSeconds);
-	return `${label} ${theme.fg("dim", "(5h)")} ${formatPercent(theme, usedPercent)}${reset ? ` ${reset}` : ""}`;
+	return `${label}${windowLabel} ${formatPercent(theme, usedPercent)}${reset ? ` ${reset}` : ""}`;
 }
 
 function formatPercent(theme: ExtensionContext["ui"]["theme"], value: number | null): string {
@@ -172,6 +181,15 @@ function formatPercent(theme: ExtensionContext["ui"]["theme"], value: number | n
 function formatReset(theme: ExtensionContext["ui"]["theme"], seconds: number | null): string {
 	const text = formatResetCountdown(seconds);
 	return text ? theme.fg("muted", text) : "";
+}
+
+function formatDuration(seconds: number | null): string | null {
+	if (seconds === null) return null;
+	const total = Math.max(0, Math.round(seconds));
+	if (total % 86_400 === 0) return `${total / 86_400}d`;
+	if (total % 3_600 === 0) return `${total / 3_600}h`;
+	if (total % 60 === 0) return `${total / 60}m`;
+	return `${total}s`;
 }
 
 function formatResetCountdown(seconds: number | null): string | null {
@@ -246,6 +264,7 @@ function asUsageWindow(value: unknown): UsageWindow | null {
 	if (!record) return null;
 	return {
 		used_percent: readNumber(record.used_percent),
+		limit_window_seconds: readNumber(record.limit_window_seconds),
 		reset_after_seconds: readNumber(record.reset_after_seconds),
 		reset_at: readNumber(record.reset_at),
 	};
