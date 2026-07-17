@@ -1,6 +1,8 @@
 ---
 name: write-a-skill
 description: Create new agent skills with proper structure, progressive disclosure, and bundled resources. Use when user wants to create, write, or build a new skill.
+model: gpt-5.6-terra
+effort: medium
 ---
 
 # Writing Skills
@@ -40,6 +42,8 @@ skill-name/
 ---
 name: skill-name
 description: Brief description of capability. Use when [specific triggers].
+model: gpt-5.6-terra
+effort: medium
 ---
 
 # Skill Name
@@ -56,6 +60,19 @@ description: Brief description of capability. Use when [specific triggers].
 
 [Link to separate files: See [REFERENCE.md](REFERENCE.md)]
 ```
+
+## Model and Effort
+
+Add `model` and `effort` only when the skill is expected to be the first skill invoked in a conversation. Omit them for helper skills normally loaded mid-conversation.
+
+Choose the least expensive sufficient configuration:
+
+- Complex reasoning: `model: gpt-5.6-sol` and `effort: medium`
+- General work: `model: gpt-5.6-terra` and `effort: medium`
+- Simple but careful work: `model: gpt-5.6-terra` and `effort: low`
+- Mechanical work: `model: gpt-5.6-luna` and `effort: medium`
+
+Supported effort values are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
 
 ## Description Requirements
 

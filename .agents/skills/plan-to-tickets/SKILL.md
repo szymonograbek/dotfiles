@@ -1,6 +1,8 @@
 ---
 name: plan-to-tickets
 description: Breaks an agreed implementation plan into clear, reviewable engineering tickets saved as local Markdown files. Use when the user explicitly invokes /skill:plan-to-tickets to turn plan.md or an implementation plan into tickets under tickets/<number>.md.
+model: gpt-5.6-terra
+effort: low
 disable-model-invocation: true
 ---
 

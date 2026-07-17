@@ -1,6 +1,8 @@
 ---
 name: grounding
 description: Ground agent hypotheses in verifiable evidence from source code, docs, issues, and concrete citations before acting. Use when investigating bugs, library behavior, architecture questions, ambiguous errors, or any task where guessing, assumptions, or stale knowledge could lead to wrong changes.
+model: gpt-5.6-sol
+effort: medium
 ---
 
 # Grounding

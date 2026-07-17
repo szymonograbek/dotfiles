@@ -1,6 +1,8 @@
 ---
 name: specs
 description: Runs a rigorous product-specification interview that resolves every relevant requirement before writing spec.md. Use when the user explicitly invokes /skill:specs to define requirements, user stories, scope, behavior, or acceptance criteria before implementation.
+model: gpt-5.6-sol
+effort: medium
 disable-model-invocation: true
 ---
 

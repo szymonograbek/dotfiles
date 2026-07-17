@@ -1,6 +1,8 @@
 ---
 name: specs-to-plan
 description: Runs a rigorous implementation-design interview from an existing spec, resolving architecture, boundaries, APIs, delivery, and verification before writing plan.md. Use when the user explicitly invokes /skill:specs-to-plan to turn spec.md or requirements into an agreed implementation plan.
+model: gpt-5.6-sol
+effort: medium
 disable-model-invocation: true
 ---
 

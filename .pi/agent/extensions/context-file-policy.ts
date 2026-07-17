@@ -502,12 +502,38 @@ function getRepoIdentity(repoRoot: string): string {
 }
 
 function getRepoName(repoRoot: string): string {
-	const remoteName = readGitRemoteName(repoRoot);
+	const remoteName = readGitRemoteName(repoRoot) ?? readJjGitRemoteName(repoRoot);
 	return remoteName ?? path.basename(normalizePath(repoRoot));
 }
 
 function readGitRemoteName(repoRoot: string): string | undefined {
-	const gitPath = path.join(normalizePath(repoRoot), ".git");
+	return readGitRemoteNameFromPath(path.join(normalizePath(repoRoot), ".git"), repoRoot);
+}
+
+function readJjGitRemoteName(repoRoot: string): string | undefined {
+	const jjRepoPath = path.join(normalizePath(repoRoot), ".jj", "repo");
+	let sharedRepoPath = jjRepoPath;
+
+	try {
+		const repoPointer = readFileSync(jjRepoPath, "utf8").trim();
+		if (repoPointer !== "") sharedRepoPath = path.resolve(path.dirname(jjRepoPath), repoPointer);
+	} catch {
+		// The primary working copy stores the repository directly in .jj/repo.
+	}
+
+	try {
+		const gitTargetPath = path.join(sharedRepoPath, "store", "git_target");
+		const gitTarget = readFileSync(gitTargetPath, "utf8").trim();
+		if (gitTarget === "") return undefined;
+
+		const gitPath = path.resolve(path.dirname(gitTargetPath), gitTarget);
+		return readGitRemoteNameFromPath(gitPath, path.dirname(gitPath));
+	} catch {
+		return undefined;
+	}
+}
+
+function readGitRemoteNameFromPath(gitPath: string, worktreeRoot: string): string | undefined {
 	let configPath = path.join(gitPath, "config");
 
 	try {
@@ -515,7 +541,7 @@ function readGitRemoteName(repoRoot: string): string | undefined {
 		const prefix = "gitdir:";
 		if (gitFile.startsWith(prefix)) {
 			const gitDir = gitFile.slice(prefix.length).trim();
-			configPath = path.join(path.resolve(repoRoot, gitDir), "config");
+			configPath = path.join(path.resolve(worktreeRoot, gitDir), "config");
 		}
 	} catch {
 		// A regular clone has a .git directory rather than a gitdir file.

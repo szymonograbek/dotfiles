@@ -1,6 +1,8 @@
 ---
 name: pull-request
 description: Create or Update Pull Request on Github
+model: gpt-5.6-luna
+effort: medium
 ---
 
 Make sure whether the PR already exists, if it does go straight to updating the description.

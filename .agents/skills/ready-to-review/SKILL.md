@@ -1,6 +1,8 @@
 ---
 name: ready-to-review
 description: Prepare an already-finished code change for review by finding its Jira ticket, validating branch/commit state, pushing, opening or updating a GitHub PR, and updating Jira. Use for creating/updating a PR from current work, pushing for review, or finishing Jira/PR handoff.
+model: gpt-5.6-terra
+effort: low
 ---
 
 # Ready to Review

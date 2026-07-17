@@ -1,6 +1,8 @@
 ---
 name: figma-to-md
 description: Converts one or more Figma design links into concise per-screen Markdown design specs. Use when the user provides Figma links, asks to inspect Figma designs, or wants design screens documented under designs/ for implementation planning.
+model: gpt-5.6-terra
+effort: medium
 ---
 
 # Figma to Markdown

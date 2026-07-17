@@ -1,6 +1,8 @@
 ---
 name: debug
 description: Investigate bugs/issues to find concrete, evidence-backed reproduction steps without fixing them. Use when the user reports a bug, failure, regression, flaky behavior, stack trace, unexpected output, or asks to debug/reproduce an issue.
+model: gpt-5.6-sol
+effort: medium
 ---
 
 # Debug
