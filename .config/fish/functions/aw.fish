@@ -140,8 +140,15 @@ function __aw_create_herdr_workspace --argument-names name path
     end
 
     set -l workspace_id (printf '%s\n' "$response" | jq -er '.result.workspace.workspace_id' 2>/dev/null)
-    if test -z "$workspace_id"
-        echo "aw: could not read the Herdr workspace ID" >&2
+    set -l root_pane_id (printf '%s\n' "$response" | jq -er '.result.root_pane.pane_id' 2>/dev/null)
+    if test -z "$workspace_id"; or test -z "$root_pane_id"
+        echo "aw: could not read the Herdr workspace or root pane ID" >&2
+        return 1
+    end
+
+    herdr pane run "$root_pane_id" pi >/dev/null
+    or begin
+        echo "aw: Herdr workspace created, but Pi failed to start" >&2
         return 1
     end
 
@@ -245,17 +252,6 @@ function __aw_create
     __aw_write_state "$state_file" "$name" "$repository_root" "$path" "$base" "$herdr_workspace_id"
     or return 1
 
-    echo "==> Starting Pi in Herdr workspace $herdr_workspace_id"
-    herdr agent start "$name" \
-        --cwd "$path" \
-        --workspace "$herdr_workspace_id" \
-        --focus \
-        -- pi
-    or begin
-        echo "aw: Herdr workspace created, but Pi failed to start" >&2
-        return 1
-    end
-
     echo "Created $path"
 end
 
@@ -324,11 +320,6 @@ function __aw_open --argument-names name
         return 1
     end
 
-    herdr agent start "$name" \
-        --cwd "$path" \
-        --workspace "$herdr_workspace_id" \
-        --focus \
-        -- pi
 end
 
 function __aw_remove --argument-names name

@@ -23,6 +23,7 @@ Turn Figma links into readable visual specs in `designs/`, one file per distinct
 
 3. **Fetch Figma via MCP**
    - Inspect frames, hierarchy, text layers, colors, typography, spacing, assets, and generated code context.
+   - For each raster illustration or image that must be implemented, record its Figma file key, node ID, and node URL. Do not call `download_assets`; a later implementation task can use the file key and node ID to retrieve the full-resolution original source image.
    - Process each distinct screen independently.
    - Treat absolute positions as visual guidance, not implementation instructions.
 
@@ -71,6 +72,7 @@ Turn Figma links into readable visual specs in `designs/`, one file per distinct
 - **Spacing:** [existing spacing tokens; Figma values as guidance]
 - **Corners/shadows/borders:** [existing token or observed value]
 - **Icons/images:** [asset description, SF Symbol name when applicable, sizing]
+- **Downloadable source assets:** [for each raster illustration/image: name; Figma file key; node ID; Figma node URL]
 - **Proposed new tokens:** [name/value only when existing tokens are not close enough]
 ## Visual implementation notes
 - [Layout, reuse, assets, and styling guidance needed to reproduce the design]
@@ -99,4 +101,5 @@ When a Figma node appears to be an SF Symbol, check layer/component names, MCP/g
 - Do not omit where elements sit. State alignment, anchoring, order, and any visually defining offsets.
 - Do not turn every Figma coordinate into an implementation coordinate; use exact offsets only where they define the composition.
 - Ground component, asset, and token recommendations in inspected app files.
+- Include the Figma file key and node ID for all implementation-required raster assets so they can be downloaded in full resolution later. Do not download assets or persist temporary download URLs.
 - Keep each file simple enough to implement without reopening Figma for basic layout, copy, styling, or asset choices.
