@@ -3,7 +3,7 @@ set -g __aw_state_root "$HOME/.local/state/aw"
 
 function __aw_usage
     echo "Usage:"
-    echo "  aw create <name> [--from <revision>]"
+    echo "  aw create <name> [prompt] [--from <revision>]"
     echo "  aw list"
     echo "  aw open <name>"
     echo "  aw remove [name]"
@@ -78,6 +78,24 @@ function __aw_write_state --argument-names state_file name repository_root path 
     mv "$temporary_file" "$state_file"
 end
 
+function __aw_copy_environment_files --argument-names source_path destination_path
+    set -l environment_files (find "$source_path" \
+        ! -path "$source_path" -type d -prune -o \
+        -type f -name '.env.*' -print)
+    or begin
+        echo "aw: failed to find environment files in $source_path" >&2
+        return 1
+    end
+
+    for source_file in $environment_files
+        echo "==> Copying "(basename "$source_file")
+        cp -p "$source_file" "$destination_path"; or begin
+            echo "aw: failed to copy environment file: $source_file" >&2
+            return 1
+        end
+    end
+end
+
 function __aw_detect_package_manager --argument-names path
     set -l package_json "$path/package.json"
     if not test -f "$package_json"
@@ -132,7 +150,7 @@ function __aw_is_react_native --argument-names path
     ' "$path/package.json" >/dev/null 2>&1
 end
 
-function __aw_create_herdr_workspace --argument-names name path
+function __aw_create_herdr_workspace --argument-names name path initial_prompt
     set -l response (herdr workspace create --cwd "$path" --label "$name" --focus)
     or begin
         echo "aw: Herdr workspace creation failed" >&2
@@ -146,7 +164,12 @@ function __aw_create_herdr_workspace --argument-names name path
         return 1
     end
 
-    herdr pane run "$root_pane_id" pi >/dev/null
+    set -l pi_command pi
+    if test -n "$initial_prompt"
+        set pi_command "pi "(string escape -- "$initial_prompt")
+    end
+
+    herdr pane run "$root_pane_id" "$pi_command" >/dev/null
     or begin
         echo "aw: Herdr workspace created, but Pi failed to start" >&2
         return 1
@@ -163,6 +186,7 @@ function __aw_create
 
     set -l name "$argv[1]"
     set -l base 'trunk()'
+    set -l initial_prompt
     set -l index 2
 
     while test $index -le (count $argv)
@@ -175,8 +199,11 @@ function __aw_create
                 end
                 set base "$argv[$index]"
             case '*'
-                echo "aw: unknown argument '$argv[$index]'" >&2
-                return 2
+                if set -q initial_prompt[1]
+                    echo "aw: only one initial prompt is supported" >&2
+                    return 2
+                end
+                set initial_prompt "$argv[$index]"
         end
         set index (math $index + 1)
     end
@@ -219,6 +246,11 @@ function __aw_create
     or return 1
 
     set path (realpath "$path")
+    __aw_copy_environment_files "$repository_root" "$path"; or begin
+        echo "aw: workspace preserved at $path" >&2
+        return 1
+    end
+
     __aw_write_state "$state_file" "$name" "$repository_root" "$path" "$base" ""
     or begin
         echo "aw: workspace created, but state could not be saved: $path" >&2
@@ -243,7 +275,7 @@ function __aw_create
     end
 
     echo "==> Creating Herdr workspace"
-    set -l herdr_workspace_id (__aw_create_herdr_workspace "$name" "$path")
+    set -l herdr_workspace_id (__aw_create_herdr_workspace "$name" "$path" "$initial_prompt")
     or begin
         echo "aw: jj workspace preserved at $path" >&2
         return 1

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 export type ReviewSource = "human" | "automated";
@@ -36,6 +36,10 @@ type SessionHeader = {
 	readonly cwd: string;
 };
 
+type SessionProject = {
+	readonly identity: string;
+};
+
 type ParsedMessage = {
 	readonly entryId: string;
 	readonly timestamp: string;
@@ -46,6 +50,8 @@ const REVIEW_HEADING = /^#?\s*Code Review Feedback\s*$/m;
 const AUTOMATED_SUFFIX = "The findings above came from an automated review of the current changes.";
 const HUMAN_SUFFIX = "The feedback above came from the user's code review of the current changes.";
 const LEGACY_SUFFIX = "Please address this feedback.";
+export const PROJECT_ENTRY_TYPE = "review-memory-project";
+export const PROJECT_ENTRY_VERSION = 1;
 
 export function scanReviewSessions(
 	sessionsRoot: string,
@@ -66,7 +72,7 @@ export function scanReviewSessions(
 		const parsed = parseSession(sessionFile);
 		cursors[sessionFile] = { size: fileStat.size, modifiedAtMs: fileStat.mtimeMs };
 		if (parsed === undefined) continue;
-		if (!belongsToProject(parsed.header.cwd, projectRoot, projectIdentity)) continue;
+		if (!belongsToProject(parsed.header.cwd, parsed.project?.identity, projectRoot, projectIdentity)) continue;
 
 		scannedFiles += 1;
 		for (const message of parsed.messages) {
@@ -101,8 +107,11 @@ export function findProjectRoot(startDirectory: string): string {
 }
 
 export function getProjectIdentity(projectRoot: string): string {
-	const remote = readOriginRemote(projectRoot);
-	return remote === undefined ? `path:${path.resolve(projectRoot)}` : `remote:${normalizeRemote(remote)}`;
+	const remote = readOriginRemote(projectRoot) ?? readJjOriginRemote(projectRoot);
+	if (remote !== undefined) return `remote:${normalizeRemote(remote)}`;
+
+	const jjRepository = resolveJjRepository(projectRoot);
+	return jjRepository === undefined ? `path:${path.resolve(projectRoot)}` : `jj:${jjRepository}`;
 }
 
 function findJsonlFiles(root: string): readonly string[] {
@@ -124,8 +133,11 @@ function findJsonlFiles(root: string): readonly string[] {
 	return files;
 }
 
-function parseSession(sessionFile: string): { readonly header: SessionHeader; readonly messages: readonly ParsedMessage[] } | undefined {
+function parseSession(sessionFile: string):
+	| { readonly header: SessionHeader; readonly project: SessionProject | undefined; readonly messages: readonly ParsedMessage[] }
+	| undefined {
 	let header: SessionHeader | undefined;
+	let project: SessionProject | undefined;
 	const messages: ParsedMessage[] = [];
 
 	for (const line of readFileSync(sessionFile, "utf8").split("\n")) {
@@ -143,6 +155,16 @@ function parseSession(sessionFile: string): { readonly header: SessionHeader; re
 			header = { cwd: value.cwd };
 			continue;
 		}
+		if (
+			value.type === "custom" &&
+			value.customType === PROJECT_ENTRY_TYPE &&
+			isRecord(value.data) &&
+			value.data.version === PROJECT_ENTRY_VERSION &&
+			typeof value.data.identity === "string"
+		) {
+			project = { identity: value.data.identity };
+			continue;
+		}
 		if (value.type !== "message" || !isRecord(value.message) || value.message.role !== "user") continue;
 
 		const text = extractText(value.message.content);
@@ -151,7 +173,7 @@ function parseSession(sessionFile: string): { readonly header: SessionHeader; re
 		messages.push({ entryId: value.id, timestamp: value.timestamp, text });
 	}
 
-	return header === undefined ? undefined : { header, messages };
+	return header === undefined ? undefined : { header, project, messages };
 }
 
 function normalizeReviewFeedback(text: string): { readonly source: ReviewSource; readonly text: string } | undefined {
@@ -212,7 +234,14 @@ function isLegacyFileHeading(line: string): boolean {
 	return !line.includes(" ") && line.includes("/") && /\.[a-zA-Z0-9]+$/.test(line);
 }
 
-function belongsToProject(sessionCwd: string, projectRoot: string, projectIdentity: string): boolean {
+function belongsToProject(
+	sessionCwd: string,
+	sessionProjectIdentity: string | undefined,
+	projectRoot: string,
+	projectIdentity: string,
+): boolean {
+	if (sessionProjectIdentity !== undefined) return sessionProjectIdentity === projectIdentity;
+
 	const sessionRoot = findProjectRoot(sessionCwd);
 	if (path.resolve(sessionRoot) === path.resolve(projectRoot)) return true;
 	if (!existsSync(sessionCwd)) return false;
@@ -221,9 +250,24 @@ function belongsToProject(sessionCwd: string, projectRoot: string, projectIdenti
 
 function readOriginRemote(projectRoot: string): string | undefined {
 	const gitConfigPath = resolveGitConfigPath(projectRoot);
-	if (gitConfigPath === undefined || !existsSync(gitConfigPath)) return undefined;
+	return gitConfigPath === undefined ? undefined : readOriginFromConfig(gitConfigPath);
+}
 
-	const config = readFileSync(gitConfigPath, "utf8");
+function readJjOriginRemote(projectRoot: string): string | undefined {
+	const repository = resolveJjRepository(projectRoot);
+	if (repository === undefined) return undefined;
+
+	const gitTargetPath = path.join(repository, "store", "git_target");
+	if (!existsSync(gitTargetPath)) return undefined;
+	const gitTarget = readFileSync(gitTargetPath, "utf8").trim();
+	if (gitTarget === "") return undefined;
+
+	return readOriginFromConfig(path.join(path.resolve(path.dirname(gitTargetPath), gitTarget), "config"));
+}
+
+function readOriginFromConfig(configPath: string): string | undefined {
+	if (!existsSync(configPath)) return undefined;
+	const config = readFileSync(configPath, "utf8");
 	const originStart = config.search(/^\[remote "origin"\]\s*$/m);
 	if (originStart < 0) return undefined;
 
@@ -231,6 +275,20 @@ function readOriginRemote(projectRoot: string): string | undefined {
 	const nextSectionStart = afterOriginHeader.search(/^\[/m);
 	const originSection = nextSectionStart < 0 ? afterOriginHeader : afterOriginHeader.slice(0, nextSectionStart);
 	return /^\s*url\s*=\s*(.+?)\s*$/m.exec(originSection)?.[1];
+}
+
+function resolveJjRepository(projectRoot: string): string | undefined {
+	const repositoryPath = path.join(projectRoot, ".jj", "repo");
+	if (!existsSync(repositoryPath)) return undefined;
+
+	const repositoryStat = statSync(repositoryPath);
+	if (repositoryStat.isDirectory()) return realpathSync(repositoryPath);
+	if (!repositoryStat.isFile()) return undefined;
+
+	const repositoryTarget = readFileSync(repositoryPath, "utf8").trim();
+	if (repositoryTarget === "") return undefined;
+	const resolvedRepository = path.resolve(path.dirname(repositoryPath), repositoryTarget);
+	return existsSync(resolvedRepository) ? realpathSync(resolvedRepository) : undefined;
 }
 
 function resolveGitConfigPath(projectRoot: string): string | undefined {

@@ -20,6 +20,7 @@ type CloneRecord = { url: string; path: string };
 type CloneRegistry = { clones: CloneRecord[] };
 type MarketplacePlugin = { name: string; description: string; source: string };
 type PluginManifest = { name: string; skills?: string };
+type GeneratedSkill = { sourceDir: string; targetDir: string; namePrefix: string };
 
 type ToggleItem = { id: string; label: string; enabled: boolean };
 
@@ -176,6 +177,11 @@ function yamlQuote(value: string): string {
 	return JSON.stringify(value.trim());
 }
 
+function yamlScalar(value: string): string {
+	const trimmed = value.trim();
+	return /^[>|][+-]?$/.test(trimmed) ? trimmed : yamlQuote(trimmed);
+}
+
 async function copySanitizedSkill(sourceDir: string, targetDir: string, namePrefix: string): Promise<void> {
 	await rm(targetDir, { recursive: true, force: true });
 	await mkdir(path.dirname(targetDir), { recursive: true });
@@ -185,14 +191,12 @@ async function copySanitizedSkill(sourceDir: string, targetDir: string, namePref
 	const normalizedPrefix = normalizeSkillName(namePrefix);
 	const normalized = content
 		.replace(/^name:\s*(.+)$/m, (_line, name: string) => `name: ${yamlQuote(`${normalizedPrefix}-${normalizeSkillName(name)}`)}`)
-		.replace(/^(description|argument-hint|allowed-tools):\s*(.+)$/gm, (_line, key: string, value: string) => `${key}: ${yamlQuote(value)}`);
+		.replace(/^(description|argument-hint|allowed-tools):\s*(.+)$/gm, (_line, key: string, value: string) => `${key}: ${yamlScalar(value)}`);
 	await writeFile(skillPath, normalized);
 }
 
-async function enabledSkillPaths(cwd: string, config: Config): Promise<string[]> {
-	const generatedRoot = GLOBAL_GENERATED_SKILLS_PATH;
-	await rm(generatedRoot, { recursive: true, force: true });
-	const skillPaths: string[] = [];
+async function configuredGeneratedSkills(cwd: string, config: Config): Promise<GeneratedSkill[]> {
+	const skills: GeneratedSkill[] = [];
 
 	for (const marketplace of config.marketplaces.filter((item) => item.enabled)) {
 		const marketplacePath = resolveMarketplacePath(cwd, marketplace);
@@ -205,13 +209,54 @@ async function enabledSkillPaths(cwd: string, config: Config): Promise<string[]>
 			const sourceSkillsPath = path.resolve(pluginPath, manifest.skills);
 			if (!existsSync(sourceSkillsPath)) continue;
 			for (const sourceSkillDir of await skillDirectories(sourceSkillsPath)) {
-				const targetDir = path.join(generatedRoot, marketplace.name, plugin.name, path.basename(sourceSkillDir));
-				await copySanitizedSkill(sourceSkillDir, targetDir, marketplace.name);
-				skillPaths.push(targetDir);
+				skills.push({
+					sourceDir: sourceSkillDir,
+					targetDir: path.join(GLOBAL_GENERATED_SKILLS_PATH, marketplace.name, plugin.name, path.basename(sourceSkillDir)),
+					namePrefix: marketplace.name,
+				});
 			}
 		}
 	}
-	return skillPaths;
+
+	return skills;
+}
+
+async function existingGeneratedSkillPaths(root: string): Promise<string[]> {
+	if (!existsSync(root)) return [];
+	if (existsSync(path.join(root, "SKILL.md"))) return [root];
+
+	const paths: string[] = [];
+	for (const entry of await readdir(root, { withFileTypes: true })) {
+		if (entry.isDirectory()) paths.push(...await existingGeneratedSkillPaths(path.join(root, entry.name)));
+	}
+	return paths;
+}
+
+async function pruneGeneratedSkills(expectedPaths: Set<string>): Promise<void> {
+	const existingPaths = await existingGeneratedSkillPaths(GLOBAL_GENERATED_SKILLS_PATH);
+	const stalePaths = existingPaths.filter((existingPath) => !expectedPaths.has(existingPath));
+	const parentPaths = new Set<string>();
+
+	for (const stalePath of stalePaths) {
+		await rm(stalePath, { recursive: true, force: true });
+		parentPaths.add(path.dirname(stalePath));
+		parentPaths.add(path.dirname(path.dirname(stalePath)));
+	}
+
+	for (const parentPath of [...parentPaths].sort((left, right) => right.length - left.length)) {
+		if (existsSync(parentPath) && (await readdir(parentPath)).length === 0) await rm(parentPath, { recursive: true });
+	}
+}
+
+async function reconcileGeneratedSkills(cwd: string, config: Config): Promise<void> {
+	const skills = await configuredGeneratedSkills(cwd, config);
+	for (const skill of skills) await copySanitizedSkill(skill.sourceDir, skill.targetDir, skill.namePrefix);
+	await pruneGeneratedSkills(new Set(skills.map((skill) => skill.targetDir)));
+}
+
+async function enabledSkillPaths(cwd: string, config: Config): Promise<string[]> {
+	const skills = await configuredGeneratedSkills(cwd, config);
+	return skills.map((skill) => skill.targetDir).filter((skillPath) => existsSync(skillPath));
 }
 
 type ToggleListResult =
@@ -319,7 +364,9 @@ async function addMarketplace(pi: ExtensionAPI, args: string, ctx: ExtensionComm
 	}
 	const config = await loadConfig(ctx.cwd);
 	const name = uniqueName(normalizeSkillName(gitUrl ? gitUrlName(gitUrl) : path.basename(absolutePath)), new Set(config.marketplaces.map((item) => item.name)));
-	await saveConfig(ctx.cwd, { ...config, marketplaces: [...config.marketplaces, { name, path: absolutePath, enabled: true, gitUrl }] });
+	const nextConfig = { ...config, marketplaces: [...config.marketplaces, { name, path: absolutePath, enabled: true, gitUrl }] };
+	await saveConfig(ctx.cwd, nextConfig);
+	await reconcileGeneratedSkills(ctx.cwd, nextConfig);
 	ctx.ui.notify(`Added marketplace: ${name}`, "info");
 	await ctx.reload();
 }
@@ -338,6 +385,7 @@ async function managePlugins(ctx: ExtensionCommandContext): Promise<void> {
 	let nextConfig = config;
 	for (const plugin of plugins) nextConfig = setPluginEnabled(nextConfig, marketplace.name, plugin.name, selected.enabled.has(plugin.name));
 	await saveConfig(ctx.cwd, nextConfig);
+	await reconcileGeneratedSkills(ctx.cwd, nextConfig);
 	ctx.ui.notify(`Saved plugin selection for ${marketplace.name}`, "info");
 	await ctx.reload();
 }
@@ -362,6 +410,7 @@ async function deleteMarketplace(config: Config, ctx: ExtensionCommandContext): 
 		plugins: config.plugins.filter((item) => item.marketplace !== marketplace.name),
 	};
 	await saveConfig(ctx.cwd, nextConfig);
+	await reconcileGeneratedSkills(ctx.cwd, nextConfig);
 	if (marketplace.gitUrl) {
 		const registry = await loadCloneRegistry();
 		const clone = registry.clones.find((item) => item.url === marketplace.gitUrl);
@@ -392,6 +441,7 @@ async function manageMarketplaces(pi: ExtensionAPI, ctx: ExtensionCommandContext
 		await updateEnabledMarketplaces(pi, nextConfig, ctx);
 		return;
 	}
+	await reconcileGeneratedSkills(ctx.cwd, nextConfig);
 	ctx.ui.notify("Saved marketplace selection", "info");
 	await ctx.reload();
 }
@@ -399,7 +449,9 @@ async function manageMarketplaces(pi: ExtensionAPI, ctx: ExtensionCommandContext
 async function updateEnabledMarketplaces(pi: ExtensionAPI, config: Config, ctx: ExtensionCommandContext): Promise<void> {
 	const enabledMarketplaces = config.marketplaces.filter((marketplace) => marketplace.enabled);
 	if (enabledMarketplaces.length === 0) {
+		await reconcileGeneratedSkills(ctx.cwd, config);
 		ctx.ui.notify("No enabled marketplaces to update", "warning");
+		await ctx.reload();
 		return;
 	}
 	for (const marketplace of enabledMarketplaces) {
@@ -408,11 +460,14 @@ async function updateEnabledMarketplaces(pi: ExtensionAPI, config: Config, ctx: 
 		const result = await pi.exec("git", ["-C", marketplacePath, "pull", "--ff-only"], { signal: ctx.signal });
 		if (result.code !== 0) {
 			ctx.ui.setStatus("ccp", undefined);
+			await reconcileGeneratedSkills(ctx.cwd, config);
 			ctx.ui.notify(`Update failed for ${marketplace.name}: ${result.stderr || result.stdout}`, "error");
+			await ctx.reload();
 			return;
 		}
 	}
 	ctx.ui.setStatus("ccp", undefined);
+	await reconcileGeneratedSkills(ctx.cwd, config);
 	ctx.ui.notify(`Updated ${enabledMarketplaces.length} marketplace(s)`, "info");
 	await ctx.reload();
 }

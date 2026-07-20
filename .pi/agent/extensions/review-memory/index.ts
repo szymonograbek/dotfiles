@@ -3,7 +3,13 @@ import { CONFIG_DIR_NAME, type ExtensionAPI, type ExtensionCommandContext } from
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { findProjectRoot, getProjectIdentity, scanReviewSessions } from "./session-history";
+import {
+	findProjectRoot,
+	getProjectIdentity,
+	PROJECT_ENTRY_TYPE,
+	PROJECT_ENTRY_VERSION,
+	scanReviewSessions,
+} from "./session-history";
 import {
 	getStateLocation,
 	mergeFeedback,
@@ -39,6 +45,28 @@ type ProjectContext = {
 
 export default function reviewMemoryExtension(pi: ExtensionAPI) {
 	let persistenceQueue: Promise<void> = Promise.resolve();
+
+	pi.on("session_start", (_event, ctx) => {
+		if (ctx.sessionManager.getSessionFile() === undefined) return;
+		const alreadyStamped = ctx.sessionManager.getEntries().some((entry) => {
+			return (
+				entry.type === "custom" &&
+				entry.customType === PROJECT_ENTRY_TYPE &&
+				isRecord(entry.data) &&
+				entry.data.version === PROJECT_ENTRY_VERSION &&
+				typeof entry.data.identity === "string"
+			);
+		});
+		if (alreadyStamped) return;
+
+		const project = resolveProject(ctx.cwd);
+		pi.appendEntry(PROJECT_ENTRY_TYPE, {
+			version: PROJECT_ENTRY_VERSION,
+			identity: project.identity,
+			root: project.root,
+			cwd: ctx.cwd,
+		});
+	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		const project = resolveProject(ctx.cwd);
@@ -464,15 +492,14 @@ function startProgressReporter(ctx: ExtensionCommandContext): ProgressReporter {
 		if (!ctx.hasUI) return;
 		const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1_000);
 		const frame = frames[elapsedSeconds % frames.length];
-		ctx.ui.setStatus("review-memory", `${frame} review memory: ${step} · ${formatElapsed(elapsedSeconds)}`);
 		ctx.ui.setWidget(
 			"review-memory-progress",
 			[
-				`${frame} Review memory: ${step}`,
-				...(detail === undefined ? [] : [detail]),
-				`Elapsed: ${formatElapsed(elapsedSeconds)}`,
+				ctx.ui.theme.fg("accent", `${frame} Review memory: ${step}`),
+				...(detail === undefined ? [] : [ctx.ui.theme.fg("muted", detail)]),
+				ctx.ui.theme.fg("dim", `Elapsed: ${formatElapsed(elapsedSeconds)}`),
 			],
-			{ placement: "belowEditor" },
+			{ placement: "aboveEditor" },
 		);
 	};
 
@@ -489,7 +516,6 @@ function startProgressReporter(ctx: ExtensionCommandContext): ProgressReporter {
 		stop: () => {
 			if (timer !== undefined) clearInterval(timer);
 			if (!ctx.hasUI) return;
-			ctx.ui.setStatus("review-memory", undefined);
 			ctx.ui.setWidget("review-memory-progress", undefined);
 		},
 	};

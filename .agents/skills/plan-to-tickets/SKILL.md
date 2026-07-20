@@ -44,7 +44,7 @@ When asking, ask one question at a time and include your recommended answer.
 
 Each ticket should be understandable without rereading the whole plan, but should not duplicate excessive context. Include enough detail for an engineer to implement and verify it later.
 
-For mobile UI or user-flow work, the final verification ticket should include Argent simulator verification when feasible. Argent is feasible only when the simulator can reach the target state without unavailable credentials, privileged accounts, real calls/SMS, payments, production-only services, or external manual setup. If auth is required, instruct the implementer to check environment variables such as `TEST_USER`, `TEST_EMAIL`, and `TEST_PASSWORD`; use them without printing values if present, and mark Argent verification as blocked if absent. Never invent credentials, request production credentials, or expose credential values.
+For mobile UI or user-flow work, the final verification ticket should include simulator verification using the `rn-iso` skill alongside Argent when feasible. Use `rn-iso` to manage the isolated React Native environment and discover the correct device target, then use Argent for UI interaction and verification. Verification is feasible only when the simulator can reach the target state without unavailable credentials, privileged accounts, real calls/SMS, payments, production-only services, or external manual setup. If auth is required, instruct the implementer to check environment variables such as `TEST_USER`, `TEST_EMAIL`, and `TEST_PASSWORD`; use them without printing values if present, and mark Argent verification as blocked if absent. Never invent credentials, request production credentials, or expose credential values.
 
 Prefer vertical slices when possible. Use horizontal/foundation tickets only when they reduce risk or unblock multiple later tickets.
 
@@ -85,9 +85,9 @@ Implement this ticket in its own separate commit, stacked on top of the previous
 
 ## Verification
 
-- [Test, manual check, logging check, migration check, build command, or Argent simulator check]
+- [Test, manual check, logging check, migration check, build command, or `rn-iso` + Argent simulator check]
 - If this is the final post-implementation verification ticket, verify the finished acceptance criteria after all implementation tickets are complete.
-- If mobile UI/user-flow behavior is simulator-reachable, use Argent to launch the app, navigate the relevant flow, inspect UI state with screenshot/accessibility/component tree, and check logs or screenshot diffs when relevant.
+- If mobile UI/user-flow behavior is simulator-reachable, load and follow the `rn-iso` skill to manage the isolated environment and discover the correct device, then use Argent to launch the app, navigate the relevant flow, inspect UI state with screenshot/accessibility/component tree, and check logs or screenshot diffs when relevant.
 - If auth is required, check for `TEST_USER`, `TEST_EMAIL`, and/or `TEST_PASSWORD` in the environment. If present, use them without printing their values. If absent, do not guess credentials; document that Argent verification is blocked by missing test credentials and provide the closest manual/backend verification path.
 
 ## Dependencies

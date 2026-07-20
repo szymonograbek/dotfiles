@@ -32,6 +32,5 @@
 - Prefer Lodash utilities when they simplify an implementation.
 - When using Argent, default to the iOS simulator and the `ai.44px.karen-beta` app.
 - Use Android only for Android-specific tasks.
-- For login, use `TEST_EMAIL` from the environment or the git-ignored `.env.local`, and retrieve the OTP through the mail MCP.
-- Do not expose the login email address or OTP in responses.
+- For login, use `TEST_EMAIL` from the environment or the git-ignored `.env.local`, and retrieve the OTP through the `apple-mail` MCP.
 - Run these two verification commands: `yarn lint:fix` and `yarn lint:ts`.
