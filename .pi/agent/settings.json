@@ -15,10 +15,10 @@
     "npm:@ff-labs/pi-fff"
   ],
   "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-terra",
+  "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "medium",
   "compaction": {
-    "enabled": false
+    "enabled": true
   },
   "editorPaddingX": 1,
   "theme": "dark",
@@ -29,5 +29,6 @@
   "extensions": [
     "-extensions/hindsight-pi/index.ts",
     "-extensions/kagi/index.ts"
-  ]
+  ],
+  "showCacheMissNotices": true
 }

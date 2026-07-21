@@ -9,6 +9,45 @@ function __aw_usage
     echo "  aw remove [name]"
 end
 
+function __aw_stable_repository_root --argument-names workspace_root
+    set workspace_root (realpath "$workspace_root"); or return 1
+    set -l repository_pointer "$workspace_root/.jj/repo"
+
+    if test -d "$repository_pointer"
+        echo "$workspace_root"
+        return 0
+    end
+
+    if not test -f "$repository_pointer"
+        echo "aw: cannot locate the shared jj repository from $workspace_root" >&2
+        return 1
+    end
+
+    set -l repository_path (string trim <"$repository_pointer")
+    if test -z "$repository_path"
+        echo "aw: jj repository pointer is empty: $repository_pointer" >&2
+        return 1
+    end
+
+    if not string match -qr '^/' -- "$repository_path"
+        set repository_path "$workspace_root/.jj/$repository_path"
+    end
+
+    set -l shared_repository (realpath "$repository_path" 2>/dev/null)
+    if test -z "$shared_repository"
+        echo "aw: shared jj repository is missing: $repository_path" >&2
+        return 1
+    end
+
+    set -l repository_root (dirname (dirname "$shared_repository"))
+    if not test -d "$repository_root/.jj/repo"; or test (realpath "$repository_root/.jj/repo") != "$shared_repository"
+        echo "aw: cannot determine the main jj workspace from $workspace_root" >&2
+        return 1
+    end
+
+    echo "$repository_root"
+end
+
 function __aw_state_file_for_current_workspace
     set -l workspace_root (jj root 2>/dev/null)
     if test -z "$workspace_root"
@@ -220,12 +259,14 @@ function __aw_create
         end
     end
 
-    set -l repository_root (jj root 2>/dev/null)
-    if test -z "$repository_root"
+    set -l source_root (jj root 2>/dev/null)
+    if test -z "$source_root"
         echo "aw: run this command from a jj repository" >&2
         return 1
     end
 
+    set source_root (realpath "$source_root")
+    set -l repository_root (__aw_stable_repository_root "$source_root"); or return 1
     set -l repository_name (basename "$repository_root")
     set -l filesystem_name (string replace -a '/' '-' -- "$name")
     set -l path "$__aw_workspace_root/$repository_name/$filesystem_name"
@@ -239,14 +280,14 @@ function __aw_create
     mkdir -p (dirname "$path"); or return 1
 
     echo "==> Creating jj workspace '$name' from $base"
-    jj -R "$repository_root" workspace add "$path" \
+    jj -R "$source_root" workspace add "$path" \
         --name "$name" \
         --revision "$base" \
         --message "$name"
     or return 1
 
     set path (realpath "$path")
-    __aw_copy_environment_files "$repository_root" "$path"; or begin
+    __aw_copy_environment_files "$source_root" "$path"; or begin
         echo "aw: workspace preserved at $path" >&2
         return 1
     end
@@ -391,8 +432,8 @@ function __aw_remove --argument-names name
         jj -R "$path" status
     end
 
-    read --local --prompt-str "Remove this workspace and its runtime? [y/N] " confirmation
-    if not string match -qi 'y' -- "$confirmation"; and not string match -qi 'yes' -- "$confirmation"
+    read --local --prompt-str "Remove this workspace and its runtime? [Y/n] " confirmation
+    if test -n "$confirmation"; and not string match -qi 'y' -- "$confirmation"; and not string match -qi 'yes' -- "$confirmation"
         echo "Cancelled"
         return 1
     end

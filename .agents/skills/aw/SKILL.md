@@ -29,6 +29,7 @@ Run from inside a Jujutsu repository:
 ```sh
 aw create fix-login
 aw create feature/paywall 'Fix the checkout error and run relevant tests.' --from '@-'
+aw create sentry-43 '/skill:investigate issue SENTRY-APP-43'
 ```
 
 - The default base revision is `trunk()`.
