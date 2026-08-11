@@ -34,7 +34,7 @@
 ## Tooling
 
 - Prefer dedicated read/search/edit tools over shell when available
-- `ff` tools do not search files or directories ignored by Git; use other tools for ignored paths
+- `ff` tools (for example, `fffind` and `ffgrep`) do not work on Git-ignored files or directories, or on directories outside the directory where the agent was launched; in those cases, use the regular `read` and `grep` tools
 - Batch independent reads/searches; parallelize when safe
 - Offload heavy, self-contained tasks to subagents; choose an appropriate model and thinking level
 - Choose the subagent model based on task complexity:

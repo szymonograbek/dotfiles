@@ -1,5 +1,6 @@
 - When creating new screens, stores, or services, always inspect existing patterns first and follow the established conventions.
 - Search for and reuse existing hooks, helpers, service getters, shared components, store lifecycles, analytics patterns, theme tokens, i18n, and date-formatting utilities before introducing a new approach.
+- Put user-facing copy in a colocated `.i18n` file and access it through the repository translation hook; keep translations with the component that owns the copy.
 - Prefer the simplest direct implementation.
 - Remove unnecessary wrappers, effects, local state, branches, timers, aliases, and one-off abstractions.
 - Keep responsibilities with their correct owner: business behavior in models or services, UI state, lifecycle, and dependency resolution in stores, and rendering in components.
@@ -14,7 +15,7 @@
 - Keep public APIs small and truthful.
 - Use names that describe actual values or behavior; avoid redundant interfaces, aliases, and speculative parameters.
 - Verify backend and SDK assumptions before encoding them.
-- Check nullability, edge cases, lifecycle transitions, state reset or persistence, awaited async work, and failure-path logging or analytics.
+- Check nullability and real edge cases at untrusted boundaries, plus lifecycle transitions, state reset or persistence, awaited async work, and failure-path logging or analytics. Avoid speculative validation or fallback branches for values guaranteed by verified backend, SDK, model, or persistence contracts.
 - Match Figma and native platform behavior precisely, including spacing, typography, iconography, sizing, keyboard avoidance, and iOS/Android differences.
 - For images with transparency that should blend into the background, set `mixBlendMode: 'multiply'` on the `Image` and `backgroundColor` on an opaque container or ancestor, never both on the image itself. Prefer an explicit `imageContainer` wrapper.
 - Optimize image assets before adding them and prefer WebP over larger source formats when supported.
@@ -29,8 +30,10 @@
 - In prop types, `() => any` is acceptable; do not require `() => void | Promise<void>`.
 - Accessibility props are not required for now.
 - For state-dependent styles, pass parameters such as `isPressed` to the `useStyles` hook instead of using inline ternaries in the component.
+- When a meaningful design-specific style value has no suitable theme token, define it as a named file-local constant instead of leaving an unexplained magic number inline.
 - Prefer Lodash utilities when they simplify an implementation.
 - When using Argent, default to the iOS simulator and the `ai.44px.karen-beta` app.
 - Use Android only for Android-specific tasks.
 - For login, use `TEST_EMAIL` from the environment or the git-ignored `.env.local`, and retrieve the OTP through the `apple-mail` MCP.
 - Run these two verification commands: `yarn lint:fix` and `yarn lint:ts`.
+- When an action belongs to a specific item, pass that item through the flow and call the action on it—for example, feedback.dismiss()—instead of storing the current item in a service and calling a global method like feedbackService.dismiss().
