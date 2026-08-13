@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resultFromChecks } from "../../evals/src/deterministic.js";
 import type { DeterministicResult, EvalCheck } from "../../evals/src/types.js";
 
 type Change = { id: string; description: string; files: string[] };
@@ -42,6 +43,5 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
   check("jira-read-write-verify", state.jiraReads >= 2 && state.jiraRawReads >= 1 && state.jiraDescription.includes("What changed") && state.jiraDescription.includes("Acceptance criteria") && state.jiraDescription.includes("QA testing steps"), "Jira was read, safely updated with QA-ready sections, and read back");
   check("skills-inspected", ["ready-to-review/SKILL.md", "jira-api/SKILL.md", "pull-request/SKILL.md", "jj/SKILL.md"].every((name) => events.includes(name)), "The handoff and required dependency skills were inspected");
 
-  const passed = checks.filter((result) => result.passed).length;
-  return { score: checks.length === 0 ? 0 : passed / checks.length, details: `${passed}/${checks.length} checks passed`, checks };
+  return resultFromChecks(checks);
 }

@@ -1,22 +1,20 @@
 import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { delimiter, join } from "node:path";
-import { runPi } from "../../evals/src/pi.js";
+import { runPiAndRecord } from "../../evals/src/pi.js";
 import { gradeSemantically } from "../../evals/src/semantic.js";
 import type { SkillEvaluation, TrialOptions, TrialResult } from "../../evals/src/types.js";
+import { prepareTrialWorkspace } from "../../evals/src/workspace.js";
 import { gradeDeterministically } from "./deterministic.js";
 
 const weights = { deterministic: 0.4, semantic: 0.6 };
 
 async function runTrial(options: TrialOptions): Promise<TrialResult> {
-  const trialDir = join(options.resultDir, `trial-${String(options.trial).padStart(2, "0")}`);
-  const workspace = join(trialDir, "workspace");
-  const fixtureDir = join(options.skillEvalsDir, "fixtures");
-  const skillsDir = join(workspace, ".agents", "skills");
-  const copiedSkillPath = join(skillsDir, "ready-to-review", "SKILL.md");
+  const { trialDir, workspace, fixtureDir, skillsDir, copiedSkillPath } = await prepareTrialWorkspace(
+    options,
+    "ready-to-review",
+  );
 
-  await mkdir(join(skillsDir, "ready-to-review"), { recursive: true });
   await cp(join(fixtureDir, "workspace"), workspace, { recursive: true });
-  await cp(join(options.skillDir, "SKILL.md"), copiedSkillPath);
   for (const dependency of ["jira-api", "pull-request", "jj"]) {
     await mkdir(join(skillsDir, dependency), { recursive: true });
     await cp(join(options.skillDir, "..", dependency, "SKILL.md"), join(skillsDir, dependency, "SKILL.md"));
@@ -31,25 +29,24 @@ async function runTrial(options: TrialOptions): Promise<TrialResult> {
   const instruction = await readFile(join(options.skillEvalsDir, "instructions", "stacked-jj.md"), "utf8");
   const originalPath = process.env.PATH;
   process.env.PATH = `${join(fixtureDir, "bin")}${delimiter}${originalPath ?? ""}`;
-  let agentRun;
+  let agentResponse: string;
   try {
-    agentRun = await runPi({
+    agentResponse = await runPiAndRecord({
       cwd: workspace,
       prompt: instruction,
       trajectoryPath: join(workspace, ".eval", "pi-events.jsonl"),
+      responsePath: join(trialDir, "agent-response.md"),
       skillPath: copiedSkillPath,
       tools: ["read", "bash"],
     });
   } finally {
     process.env.PATH = originalPath;
   }
-  await writeFile(join(trialDir, "agent-response.md"), agentRun.response);
-  if (agentRun.error) throw new Error(`Evaluated agent failed: ${agentRun.error}`);
 
   const deterministic = await gradeDeterministically(workspace);
   const state = await readFile(join(workspace, ".eval", "state.json"), "utf8");
   const candidatePath = join(trialDir, "candidate.md");
-  await writeFile(candidatePath, `# Agent response\n\n${agentRun.response}\n\n# Resulting fixture state\n\n\`\`\`json\n${state}\n\`\`\`\n`);
+  await writeFile(candidatePath, `# Agent response\n\n${agentResponse}\n\n# Resulting fixture state\n\n\`\`\`json\n${state}\n\`\`\`\n`);
   const semantic = await gradeSemantically({
     cwd: workspace,
     rubricPath: join(options.skillEvalsDir, "rubrics", "stacked-jj.md"),

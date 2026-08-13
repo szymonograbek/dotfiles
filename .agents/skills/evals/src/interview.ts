@@ -15,6 +15,17 @@ export type SimulatedInterviewResult = {
   turns: number;
 };
 
+export function formatInterviewTranscript(
+  interview: SimulatedInterviewResult,
+  labels: { interviewer: string; stakeholder: string },
+): string {
+  return interview.transcript.map((message, index) => [
+    `## Turn ${index + 1}: ${labels[message.role]}`,
+    message.role === "stakeholder" ? `Confirmed: ${message.confirmed === true ? "yes" : "no"}` : "",
+    message.content,
+  ].filter(Boolean).join("\n")).join("\n\n");
+}
+
 type StakeholderTurn = {
   response: string;
   confirmed: boolean;

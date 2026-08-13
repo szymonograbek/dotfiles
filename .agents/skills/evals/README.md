@@ -158,10 +158,13 @@ Examples of generalizable improvements include distinguishing component API comp
 
 ## Shared modules
 
-- `src/pi.ts`: isolated Pi execution using Terra, explicit resources, and JSONL trajectories.
+- `src/workspace.ts`: standard trial/workspace paths, skill copying, and `.eval` setup.
+- `src/pi.ts`: isolated Pi execution using Terra, JSONL trajectories, and response recording.
 - `src/semantic.ts`: rubric-based Terra semantic grading.
+- `src/deterministic.ts`: deterministic check aggregation and scoring.
+- `src/files.ts`: optional UTF-8 artifact reads with explicit fallbacks.
 - `src/fixture-tool.ts`: deterministic text-backed inline tools.
-- `src/interview.ts`: stateful subject/stakeholder interview orchestration.
+- `src/interview.ts`: stateful subject/stakeholder interview orchestration and transcript formatting.
 - `src/types.ts`: shared evaluation contracts.
 - `skill-evals.test.ts`: skill loading, thresholds, assertions, and aggregate summaries.
 

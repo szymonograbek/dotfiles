@@ -1,5 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { resultFromChecks } from "../../evals/src/deterministic.js";
+import { readTextOr } from "../../evals/src/files.js";
 import type { SimulatedInterviewResult } from "../../evals/src/interview.js";
 import type { DeterministicResult, EvalCheck } from "../../evals/src/types.js";
 
@@ -7,14 +9,6 @@ type GradeOptions = {
   workspace: string;
   interview: SimulatedInterviewResult;
 };
-
-async function read(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
-  }
-}
 
 export async function gradeDeterministically(options: GradeOptions): Promise<DeterministicResult> {
   const checks: EvalCheck[] = [];
@@ -26,7 +20,7 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
   check("explicit-confirmation", options.interview.confirmed, "Stakeholder explicitly confirmed shared understanding");
   check("write-after-confirmation", !options.interview.specCreatedBeforeConfirmation, "spec.md was not created before confirmation");
 
-  const spec = await read(join(options.workspace, "spec.md"));
+  const spec = await readTextOr(join(options.workspace, "spec.md"));
   check("spec-created", spec.length > 0, "A non-empty spec.md was created");
 
   const requiredHeadings = [
@@ -48,7 +42,7 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
   const unexpectedEntries = entries.map((entry) => entry.name).filter((name) => !allowedTopLevel.has(name));
   check("no-implementation-or-extra-artifacts", unexpectedEntries.length === 0, `Unexpected workspace entries: ${unexpectedEntries.join(", ") || "none"}`);
 
-  const events = await read(join(options.workspace, ".eval", "subject-events.jsonl"));
+  const events = await readTextOr(join(options.workspace, ".eval", "subject-events.jsonl"));
   const readmeIndex = events.indexOf("README.md");
   const contextIndex = events.indexOf("CONTEXT.md");
   const writeIndex = events.indexOf('"toolName":"write"');
@@ -60,10 +54,5 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
   );
   check("skill-loaded", events.includes("specs/SKILL.md"), "Pi loaded the specs skill");
 
-  const passed = checks.filter((result) => result.passed).length;
-  return {
-    score: checks.length === 0 ? 0 : passed / checks.length,
-    details: `${passed}/${checks.length} checks passed`,
-    checks,
-  };
+  return resultFromChecks(checks);
 }

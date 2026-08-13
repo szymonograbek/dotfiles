@@ -111,7 +111,7 @@ export async function createPiAgent(options: PiAgentOptions): Promise<PiAgent> {
   };
 }
 
-type RunPiOptions = PiAgentOptions & {
+export type RunPiOptions = PiAgentOptions & {
   prompt: string;
 };
 
@@ -123,4 +123,15 @@ export async function runPi(options: RunPiOptions): Promise<PiRun> {
   } finally {
     await agent.dispose();
   }
+}
+
+export async function runPiAndRecord(
+  options: RunPiOptions & { responsePath: string },
+): Promise<string> {
+  const { responsePath, ...runOptions } = options;
+  const run = await runPi(runOptions);
+  await writeFile(responsePath, run.response);
+  if (run.error) throw new Error(`Evaluated agent failed: ${run.error}`);
+
+  return run.response;
 }

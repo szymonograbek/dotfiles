@@ -1,5 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
+import { resultFromChecks } from "../../evals/src/deterministic.js";
+import { readTextOr } from "../../evals/src/files.js";
 import type { DeterministicResult, EvalCheck } from "../../evals/src/types.js";
 
 async function walk(directory: string): Promise<string[]> {
@@ -13,14 +15,6 @@ async function walk(directory: string): Promise<string[]> {
   }
 
   return files;
-}
-
-async function read(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
-  }
 }
 
 export async function gradeDeterministically(workspace: string): Promise<DeterministicResult> {
@@ -38,7 +32,7 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
     "Expected exactly designs/booking-confirmed.md",
   );
 
-  const content = await read(join(designsPath, "booking-confirmed.md"));
+  const content = await readTextOr(join(designsPath, "booking-confirmed.md"));
   const requiredHeadings = [
     "## Source",
     "## Layout",
@@ -69,16 +63,11 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
   const images = workspaceFiles.filter((path) => [".png", ".jpg", ".jpeg", ".webp"].includes(extname(path).toLowerCase()));
   check("no-asset-download", images.length === 0, "No source image was downloaded");
 
-  const events = await read(join(workspace, ".eval", "pi-events.jsonl"));
+  const events = await readTextOr(join(workspace, ".eval", "pi-events.jsonl"));
   check("figma-inspected", events.includes("figma_get_design_context"), "The Figma fixture was inspected");
   check("app-inspected", events.includes("src/theme/tokens.ts") && events.includes("src/components/PrimaryButton.tsx"), "Relevant app sources were inspected");
   check("skill-loaded", events.includes("figma-to-md/SKILL.md"), "Pi loaded the skill");
   check("asset-download-not-called", !events.includes('"toolName":"download_assets"'), "download_assets was not called");
 
-  const passed = checks.filter((result) => result.passed).length;
-  return {
-    score: checks.length === 0 ? 0 : passed / checks.length,
-    details: `${passed}/${checks.length} checks passed`,
-    checks,
-  };
+  return resultFromChecks(checks);
 }

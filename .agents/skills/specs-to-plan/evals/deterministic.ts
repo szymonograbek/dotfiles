@@ -1,5 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { resultFromChecks } from "../../evals/src/deterministic.js";
+import { readTextOr } from "../../evals/src/files.js";
 import type { SimulatedInterviewResult } from "../../evals/src/interview.js";
 import type { DeterministicResult, EvalCheck } from "../../evals/src/types.js";
 
@@ -14,14 +16,6 @@ type GradeOptions = {
   scenario: DeterministicScenario;
 };
 
-async function read(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
-  }
-}
-
 export async function gradeDeterministically(options: GradeOptions): Promise<DeterministicResult> {
   const checks: EvalCheck[] = [];
   const check = (name: string, passed: boolean, message: string) => checks.push({ name, passed, message });
@@ -30,7 +24,7 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
   check("explicit-confirmation", options.interview.confirmed, "Engineer explicitly confirmed shared understanding");
   check("write-after-confirmation", !options.interview.specCreatedBeforeConfirmation, "plan.md was not created before confirmation");
 
-  const plan = await read(join(options.workspace, "plan.md"));
+  const plan = await readTextOr(join(options.workspace, "plan.md"));
   check("plan-created", plan.length > 0, "A non-empty plan.md was created");
   const headings = [
     "## At a glance",
@@ -52,7 +46,7 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
     "The plan preserves objective scenario types and implementation identifiers",
   );
 
-  const events = await read(join(options.workspace, ".eval", "subject-events.jsonl"));
+  const events = await readTextOr(join(options.workspace, ".eval", "subject-events.jsonl"));
   check(
     "repository-evidence-inspected",
     options.scenario.requiredEvidence.every((path) => events.includes(path)),
@@ -65,6 +59,5 @@ export async function gradeDeterministically(options: GradeOptions): Promise<Det
   const unexpected = topLevel.map((entry) => entry.name).filter((name) => !allowed.has(name));
   check("plan-only", unexpected.length === 0, `No implementation artifacts were created: ${unexpected.join(", ") || "none"}`);
 
-  const passed = checks.filter((result) => result.passed).length;
-  return { score: checks.length === 0 ? 0 : passed / checks.length, details: `${passed}/${checks.length} checks passed`, checks };
+  return resultFromChecks(checks);
 }

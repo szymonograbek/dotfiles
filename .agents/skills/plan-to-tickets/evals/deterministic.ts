@@ -1,14 +1,8 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { resultFromChecks } from "../../evals/src/deterministic.js";
+import { readTextOr } from "../../evals/src/files.js";
 import type { DeterministicResult, EvalCheck } from "../../evals/src/types.js";
-
-async function read(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf8");
-  } catch {
-    return "";
-  }
-}
 
 export async function gradeDeterministically(workspace: string): Promise<DeterministicResult> {
   const checks: EvalCheck[] = [];
@@ -22,7 +16,10 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
   const expectedFiles = ticketFiles.map((_, index) => `${index + 1}.md`);
   check("consecutive-ticket-files", ticketFiles.length >= 3 && ticketFiles.every((file, index) => file === expectedFiles[index]), "At least three consecutively numbered ticket files exist");
 
-  const tickets = await Promise.all(ticketFiles.map(async (file) => ({ file, content: await read(join(ticketDir, file)) })));
+  const tickets = await Promise.all(ticketFiles.map(async (file) => ({
+    file,
+    content: await readTextOr(join(ticketDir, file)),
+  })));
   const requiredHeadings = [
     "## Goal", "## Context", "## Commit guidance", "## Scope", "### In scope", "### Out of scope",
     "## Implementation notes", "## Acceptance criteria", "## Verification", "## Dependencies", "## Risks and follow-ups",
@@ -59,7 +56,7 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
     "The last ticket is separate finished-feature verification with required checks",
   );
 
-  const events = await read(join(workspace, ".eval", "pi-events.jsonl"));
+  const events = await readTextOr(join(workspace, ".eval", "pi-events.jsonl"));
   check("plan-inspected", events.includes("plan.md"), "Pi inspected plan.md");
   check(
     "code-context-inspected",
@@ -73,6 +70,5 @@ export async function gradeDeterministically(workspace: string): Promise<Determi
   const unexpected = topLevel.map((entry) => basename(entry.name)).filter((name) => !allowed.has(name));
   check("local-tickets-only", unexpected.length === 0, `No implementation or remote-ticket artifacts were created: ${unexpected.join(", ") || "none"}`);
 
-  const passed = checks.filter((result) => result.passed).length;
-  return { score: checks.length === 0 ? 0 : passed / checks.length, details: `${passed}/${checks.length} checks passed`, checks };
+  return resultFromChecks(checks);
 }
