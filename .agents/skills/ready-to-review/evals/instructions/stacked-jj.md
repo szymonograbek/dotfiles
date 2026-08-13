@@ -1,0 +1,1 @@
+/skill:ready-to-review Prepare the finished work in this workspace for review under ABC-314. Complete the handoff now: normalize metadata where needed, push, open the PR, and update Jira. The current stack and working-copy changes are intentional and complete; you are authorized to update all handoff metadata without asking me again.

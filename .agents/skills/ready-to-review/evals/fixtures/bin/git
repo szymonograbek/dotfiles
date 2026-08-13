@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo 'ERROR: git must not be used in this jj repository' >&2
+exit 42

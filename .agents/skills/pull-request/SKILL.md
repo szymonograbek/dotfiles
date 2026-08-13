@@ -22,14 +22,16 @@ effort: low
 
 ## Description quality
 
-Write for a reviewer who has not followed the implementation work.
+Write for a technical reviewer who has not followed the implementation work. Keep it focused, but detailed enough to understand the change and review its design without reconstructing intent from the diff.
 
-- State concrete behavior and scope. Name the affected flow, component, or system.
-- Explain the problem or requirement that motivated the change and its user or system impact.
-- Summarize the implementation at the architectural level, including important data flow, state, API, migration, compatibility, or trade-off decisions.
+- `What`: describe the complete behavioral and technical scope across the full PR range. Name the affected flow, component, boundary, or system and important scope exclusions.
+- `Why`: explain the original problem or requirement, its user/system impact, and why the chosen behavior or architecture was necessary. Include the rationale for non-obvious changes instead of merely restating what changed.
+- `How`: explain the implementation at the architectural level, including important data/control flow, state ownership, API/schema changes, compatibility, migration, lifecycle, and failure behavior when applicable. Explain key design choices and trade-offs, rejected simpler-looking approaches when relevant, and concrete reviewer hotspots.
+- Prefer several specific bullets per section when the PR contains multiple commits or concerns. Do not make the description artificially concise at the expense of technical context.
+- Derive the description from the complete base-to-head diff and commit set, not only the top commit.
 - Call out meaningful review hotspots and scope limitations in `How` when relevant.
 - Derive every claim from the diff, repository, checks, or linked issue. Do not invent context.
-- Prefer concise bullets, but include enough detail for an informed review.
+- Prefer focused, information-dense bullets over long narrative, but include enough technical detail for an informed review.
 - Avoid vague statements such as “updated logic,” “fixed issue,” or “added improvements.”
 - Do not narrate files line by line or repeat the PR title.
 

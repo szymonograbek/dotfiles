@@ -1,0 +1,15 @@
+{
+  "bookmark": "feat/ABC-314-team-members",
+  "baseBookmark": "feat/invite-onboarding",
+  "changes": [
+    {"id":"aaaa1111","description":"add invitation acceptance","files":["src/teamInvitations.ts"]},
+    {"id":"bbbb2222","description":"add members data model","files":["src/teamMembers.ts"]},
+    {"id":"cccc3333","description":"","files":["src/teamMembers.ts"]}
+  ],
+  "pushed": false,
+  "pr": null,
+  "jiraReads": 0,
+  "jiraRawReads": 0,
+  "jiraDescription": "Team owners need to invite colleagues and review current members.",
+  "calls": []
+}

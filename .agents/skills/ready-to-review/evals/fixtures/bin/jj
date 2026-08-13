@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+import json, os, sys
+p=os.path.join(os.getcwd(),'.eval','state.json')
+s=json.load(open(p)); a=sys.argv[1:]; s['calls'].append('jj '+' '.join(a))
+def save(): json.dump(s,open(p,'w'),indent=2)
+if not a: save(); sys.exit()
+cmd=a[0]
+if cmd in ('status','st'):
+ print('Working copy changes:\nM src/teamMembers.ts\nWorking copy (@): cccc3333 (no description set)\nParent commit (@-): bbbb2222 add members data model')
+elif cmd=='bookmark':
+ if len(a)>1 and a[1]=='list': print('feat/ABC-314-team-members: cccc3333\nfeat/invite-onboarding: base0000\nmain@origin: main0000')
+ elif len(a)>1 and a[1] in ('set','create'):
+  name=a[2]; s['bookmark']=name; print('Created 1 bookmarks pointing to cccc3333')
+elif cmd=='log':
+ rev=' '.join(a)
+ if 'ancestors(main' in rev or 'main@origin' in rev:
+  print('main0000 ABC-299 add notification settings\nmain0001 ABC-301 update account switcher\nmain0002 ABC-305 fix team permissions')
+ elif 'feat/invite-onboarding' in rev and '..' in rev:
+  for c in reversed(s['changes']): print(f"{c['id']} {c['description'] or '(no description set)'}")
+ else:
+  print(f"cccc3333 {s['changes'][2]['description'] or '(no description set)'}\nbbbb2222 {s['changes'][1]['description']}\naaaa1111 {s['changes'][0]['description']}\nbase0000 ABC-310 add invite onboarding\nmain0000 ABC-299 add notification settings")
+elif cmd in ('diff','show'):
+ print('src/teamInvitations.ts | invitation acceptance\nsrc/teamMembers.ts | member model, sorting, and member list state')
+elif cmd=='describe':
+ rid='cccc3333'
+ if '-r' in a: rid=a[a.index('-r')+1]
+ msg=''
+ if '-m' in a: msg=a[a.index('-m')+1]
+ for c in s['changes']:
+  if c['id'].startswith(rid): c['description']=msg
+ print(f'Described {rid}')
+elif cmd=='git' and len(a)>1 and a[1]=='push':
+ s['pushed']=True; print(f'Bookmark {s["bookmark"]} pushed to origin')
+elif cmd=='resolve': print('No conflicts found')
+else: print('ok')
+save()
