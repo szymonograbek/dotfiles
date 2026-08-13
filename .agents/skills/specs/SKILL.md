@@ -9,13 +9,14 @@ disable-model-invocation: true
 Turn an idea into a complete, implementation-light product spec in `spec.md`.
 ## Interview contract
 Interview the user relentlessly until both sides share the same understanding.
-- Ask exactly one question at a time and wait for the answer.
+- Ask exactly one question at a time and wait for the answer. The recommendation inside that question must address the same single decision; do not bundle independent rules, defaults, validations, or outcomes into one proposed answer.
 - For every question, give a recommended answer or concrete draft, with brief reasoning.
-- Resolve prerequisite decisions before dependent ones. Follow each answer into its relevant branches.
+- Resolve prerequisite decisions before dependent ones. Systematically test relevant coverage-ledger branches, including slow states, interruption, concurrency, and accessibility; asking once about a plausible edge case is valid even when the answer is ultimately out of scope. Prioritize branches by user impact and likelihood, frame them as observable product behavior, and stop pursuing them once they are resolved or declared out of scope.
 - Find facts in the filesystem, docs, tickets, analytics, product copy, code, tests, or tools instead of asking the user.
 - Put product decisions to the user; never silently choose one because it seems obvious.
 - Challenge ambiguity, conflicting requirements, hidden assumptions, and untestable language.
-- Do not treat silence, partial answers, or moving on as agreement.
+- Do not treat silence, partial answers, or moving on as agreement. An answer accepts only what it explicitly resolves, even when your recommendation bundled additional consequences or behavior into the question. Ask narrow follow-ups immediately until every part of that decision is explicit, then introduce the next decision.
+- Treat an explicit `out of scope` decision as resolved scope, not as a deferred open question. Record it as a non-goal and move on; do not ask who owns it or continue designing that behavior unless the user identifies a required in-scope consequence.
 - Do not write `spec.md` or begin implementation until the user explicitly confirms shared understanding.
 ## Workflow
 1. **Research context**
@@ -34,11 +35,11 @@ Interview the user relentlessly until both sides share the same understanding.
 4. **Confirm completeness**
    - Recap every story, its scenarios, state changes, assumptions, exclusions, and remaining questions.
    - Check that every in-scope story has observable acceptance criteria for success and relevant non-happy paths.
-   - Ask whether anything is missing and whether shared understanding has been reached.
+   - After the recap, explicitly ask two separate confirmation checks in order: first whether anything is missing or incorrect; only after that is resolved, ask whether shared understanding has been reached. Do not treat a generic approval of the recap as answering both checks.
    - If not confirmed, continue interviewing one question at a time.
 5. **Write only after confirmation**
    - Write or update `spec.md` in the current working directory.
-   - Preserve genuinely deferred items under `Open questions`; do not use that section to avoid resolvable decisions.
+   - Preserve every genuinely deferred item under `Open questions`, including its owner and the decision point or impact. Before writing, reconcile the final recap against that section so no unresolved decision is omitted or presented as settled. Do not use `Open questions` to avoid resolvable decisions.
 ## Coverage ledger
 Cover what is relevant for **each** story; explicitly mark irrelevant branches and why:
 - actor, permission, entry condition, trigger, goal, and completion/exit state
@@ -47,9 +48,9 @@ Cover what is relevant for **each** story; explicitly mark irrelevant branches a
 - empty, loading, slow, error, offline, interrupted, retry, cancellation, and recovery behavior
 - duplicates, conflicts, limits, expired/stale data, concurrent actions, and irreversible actions
 - notifications, handoffs, visibility, audit/history, and outcomes for affected actors
-- accessibility, privacy, security, compliance, abuse/misuse, and data lifecycle
+- accessibility, privacy, security, compliance, abuse/misuse, and data lifecycle; for stale permissions or lost access, state both the resulting user-visible path and what protected information must not be disclosed
 - analytics, success measures, rollout expectations, risks, scope, non-goals, and assumptions
-Stay at the product-behavior level. When implementation details arise, capture only the user-facing requirement or constraint behind them.
+Stay at the product-behavior level. Do not ask the user to choose storage, records, identifiers, architecture, scheduling mechanisms, or other implementation design when the observable behavior can be specified without that choice. When implementation details arise, capture only the user-facing requirement or constraint behind them.
 ## `spec.md` format
 ```md
 # [Spec title]

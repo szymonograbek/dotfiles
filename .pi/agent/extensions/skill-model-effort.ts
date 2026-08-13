@@ -1,7 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import {
-	isToolCallEventType,
 	parseFrontmatter,
 	type ExtensionAPI,
 	type ExtensionContext,
@@ -23,29 +21,11 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 	return typeof value === "string" && THINKING_LEVELS.has(value);
 }
 
-function hasConversation(ctx: ExtensionContext): boolean {
-	return ctx.sessionManager.getBranch().some((entry) => {
-		if (entry.type !== "message") return false;
-
-		return entry.message.role === "user" || entry.message.role === "assistant";
-	});
-}
-
 function getSkillPath(pi: ExtensionAPI, skillName: string): string | undefined {
 	return pi
 		.getCommands()
 		.find((command) => command.source === "skill" && command.name === `skill:${skillName}`)
 		?.sourceInfo.path;
-}
-
-function getSkillPathForRead(pi: ExtensionAPI, cwd: string, readPath: string): string | undefined {
-	const normalizedReadPath = resolve(cwd, readPath.replace(/^@/, ""));
-
-	return pi
-		.getCommands()
-		.filter((command) => command.source === "skill")
-		.map((command) => command.sourceInfo.path)
-		.find((skillPath) => resolve(skillPath) === normalizedReadPath);
 }
 
 function findAvailableModel(modelReference: string, ctx: ExtensionContext) {
@@ -119,44 +99,19 @@ async function applySkillConfiguration(
 }
 
 export default function skillModelEffortExtension(pi: ExtensionAPI) {
-	let detectFirstToolCall = false;
-
 	pi.on("input", async (event, ctx) => {
-		detectFirstToolCall = false;
-
-		if (event.source === "extension" || event.streamingBehavior !== undefined || hasConversation(ctx)) {
+		if (event.source === "extension" || event.streamingBehavior !== undefined) {
 			return { action: "continue" };
 		}
 
 		const skillCommand = event.text.match(/^\/skill:([^\s]+)(?:\s|$)/);
-		if (skillCommand) {
-			const skillName = skillCommand[1];
-			const skillPath = getSkillPath(pi, skillName);
+		if (!skillCommand) return { action: "continue" };
 
-			if (skillPath) {
-				await applySkillConfiguration(pi, skillPath, ctx);
-			}
-
-			return { action: "continue" };
-		}
-
-		detectFirstToolCall = true;
-		return { action: "continue" };
-	});
-
-	pi.on("tool_call", async (event, ctx) => {
-		if (!detectFirstToolCall) return;
-		detectFirstToolCall = false;
-
-		if (!isToolCallEventType("read", event)) return;
-
-		const skillPath = getSkillPathForRead(pi, ctx.cwd, event.input.path);
+		const skillPath = getSkillPath(pi, skillCommand[1]);
 		if (skillPath) {
 			await applySkillConfiguration(pi, skillPath, ctx);
 		}
-	});
 
-	pi.on("agent_end", () => {
-		detectFirstToolCall = false;
+		return { action: "continue" };
 	});
 }

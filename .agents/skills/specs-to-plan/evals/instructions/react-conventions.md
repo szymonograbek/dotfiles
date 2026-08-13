@@ -1,0 +1,1 @@
+/skill:specs-to-plan Turn `spec.md` into an agreed implementation plan. Inspect the repository to identify applicable existing patterns before recommending the design. Interview me about unresolved implementation decisions, and write `plan.md` only after we confirm shared understanding.

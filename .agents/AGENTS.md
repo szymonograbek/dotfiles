@@ -37,6 +37,7 @@
 - `ff` tools (for example, `fffind` and `ffgrep`) do not work on Git-ignored files or directories, or on directories outside the directory where the agent was launched; in those cases, use the regular `read` and `grep` tools
 - Batch independent reads/searches; parallelize when safe
 - Offload heavy, self-contained tasks to subagents; choose an appropriate model and thinking level
+- Subagents do not inherit the conversation or parent-agent context; their only context is the task prompt, explicitly provided context files, and enabled skills/extensions. Make every subagent prompt self-contained.
 - Choose the subagent model based on task complexity:
   - `gpt-5.6-sol`: top-tier reasoning for the hardest tasks
   - `gpt-5.6-terra`: medium-tier reasoning for moderately complex tasks
@@ -68,9 +69,13 @@
 
 ## Scope Control
 
-- Avoid over-engineering; do not add features, abstractions, configurability, or refactors beyond what the task requires
-- Prefer the simplest general solution that correctly solves the problem
-- If temporary scratch files or helper scripts are created during iteration, remove them before finishing unless they are part of the requested solution
+- **Simplicity is the primary design constraint:** Write the most straightforward code that solves the actual requirement. Prefer obvious, linear control flow over clever composition, dense transformations, indirection, or excessive defensive machinery. If two solutions work, choose the one readers can understand fastest.
+- **Reuse must simplify:** Reuse existing utilities and patterns where natural. Extract shared code only when it represents a stable concept, removes real duplication, and makes the result easier to understand. Do not add abstractions, configurability, or indirection for hypothetical reuse.
+- **Centralize cross-cutting behavior:** When behavior must apply consistently across many call sites, implement it once at the shared boundary instead of repeating it beside every use. Keep policy in one maintainable abstraction so callers only express intent.
+- **Keep contracts narrow and meaningful:** Functions should accept only values for which the operation conceptually makes sense. Do not widen parameters to `null | undefined` or silently return early for caller convenience. Handle absence at the boundary, then pass required values through core code. Model legitimate absence or failure explicitly.
+- **Fix root causes, not symptoms:** Repair the broken invariant at its source while preserving intended behavior. Do not remove, disable, hide, or bypass the feature or path exposing the bug. Verify that all equivalent paths obey the same contract.
+- **Avoid speculative safeguards:** Do not add guards, fallbacks, validation, or error handling for hypothetical cases without evidence they can occur or a requirement that they be supported.
+- If temporary scratch files or helper scripts are created during iteration, remove them before finishing unless they are part of the requested solution.
 
 ## Git, jj, VCS, SCM, Pull Requests, Commits
 

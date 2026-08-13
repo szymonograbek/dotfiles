@@ -1,0 +1,17 @@
+{
+  "name": "orbit-mobile-fixture",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@react-native-firebase/app": "23.5.0",
+    "@react-native-firebase/remote-config": "23.5.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

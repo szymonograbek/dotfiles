@@ -17,6 +17,11 @@ Interview the user relentlessly until both sides share the same understanding.
 - Resolve prerequisite decisions before dependent ones. Follow each answer into its relevant branches.
 - Find facts in code, docs, tests, configuration, history, and tools instead of asking the user.
 - Put implementation decisions to the user; never silently choose one because it seems obvious or conventional.
+- Treat the interview as detailed implementation design, not only requirements clarification.
+- Explicitly discuss component composition and responsibilities (for example UI, state, services, repositories, and infrastructure), including dependency direction and where logic lives.
+- Explicitly discuss API shape at each relevant boundary: concrete operations, inputs, outputs, types, errors, ownership, and compatibility.
+- Design boundaries from consumer needs rather than mirroring a provider or implementation. Recommend the smallest coherent interface that makes invalid calls difficult, and keep provider lifecycle, mutation, and unused flexibility behind the implementation boundary.
+- Resolve implementation details that materially affect the plan, such as files/modules, state transitions, algorithms, framework mechanisms, persistence, async behavior, and test seams.
 - Challenge ambiguity, conflicting requirements, hidden assumptions, unsafe shortcuts, and missing failure behavior.
 - Do not treat silence, partial answers, or moving on as agreement.
 - Do not write `plan.md`, edit application code, migrate data, commit, or enact the plan until the user explicitly confirms shared understanding.
@@ -36,6 +41,11 @@ Interview the user relentlessly until both sides share the same understanding.
 3. **Interview one decision at a time**
    - State the decision and summarize relevant evidence.
    - Recommend one option with trade-offs and mention meaningful alternatives.
+   - Make each proposal complete enough to judge its coupled consequences before asking for approval; do not spread one architectural decision across several questions merely to repair an underspecified first recommendation.
+   - Make proposals concrete enough to review: name components, responsibilities, APIs/types, interactions, and relevant implementation mechanisms. For an API decision, show the proposed minimal signature and explain why each exposed member belongs; also state subscription/unsubscription, identity, ownership, update ordering, and failure semantics when the boundary is stateful or reactive.
+   - For stateful UI or asynchronous flows, recommend one coherent model: identify each fact's owner, legal states and transitions, which events initiate work, where external synchronization belongs, how stale/concurrent work is handled, and how visible loading, empty, success, and failure states are derived. Prefer existing framework boundaries that already model this lifecycle; do not mirror their data into parallel state. Treat effects as synchronization with external systems, not as a default way to orchestrate state transitions or user actions.
+   - Do not ask for approval of a state-ownership or async architecture after naming only its mechanism. In that same first recommendation, walk through its important initial, active, empty, refreshing, failure, retry, and superseded-work outcomes, marking irrelevant outcomes explicitly. These are consequences of one design decision, not separate decisions to defer to later turns.
+   - Verify that the proposed framework mechanism actually provides every claimed transition and failure behavior. Inspect installed types, source, tests, or authoritative docs when repository examples do not prove semantics; do not infer that pending-state retention, cancellation, retries, caches, or subscriptions behave the same after success, error, replacement, and disposal.
    - Ask the user to accept, modify, or reject it, then wait.
    - Record the agreement and any new branches opened by the answer.
 
@@ -54,9 +64,9 @@ Interview the user relentlessly until both sides share the same understanding.
 Cover what is relevant:
 
 - requirement interpretation, scope boundaries, terminology, and acceptance-criterion mapping
-- affected components, ownership, module boundaries, reuse, and dependency direction
-- end-to-end control/data flow, state model, invariants, concurrency, and idempotency
-- APIs, events, types, schemas, validation, compatibility, versioning, and data lifecycle
+- affected components, UI/service/repository/infrastructure composition, ownership, module boundaries, reuse, dependency direction, and placement of business logic
+- end-to-end control/data flow, state model, invariants, concurrency, idempotency, persistence, and async mechanisms
+- concrete API operations/signatures, events, types, schemas, validation, errors, compatibility, versioning, and data lifecycle
 - UI states, accessibility, permissions, errors, retries, recovery, offline behavior, and limits
 - security, privacy, compliance, abuse cases, secrets, and authorization
 - performance, scalability, reliability, observability, analytics, and operational support

@@ -25,6 +25,8 @@ When asking, ask one question at a time and include your recommended answer.
    - Inspect relevant code only when needed to size or sequence tickets.
 
 2. **Choose ticket boundaries**
+   - Before drafting, build a decision ledger from the plan: concrete contracts and fields, validation, states and transitions, errors and recovery, algorithms/invariants, accessibility, privacy/analytics, scope exclusions, tests, sequencing, rollout, and risks.
+   - Assign every ledger item to the ticket that implements or verifies it. A decision may appear in multiple tickets when each needs it to remain independently implementable, but no item may be orphaned or left only in the final verification ticket.
    - Prefer tickets that are independently reviewable and testable.
    - Keep each ticket focused on one coherent change.
    - Order tickets by dependency: foundations, behavior, integration, cleanup, then post-implementation verification.
@@ -42,11 +44,11 @@ When asking, ask one question at a time and include your recommended answer.
 
 ## Ticket quality bar
 
-Each ticket should be understandable without rereading the whole plan, but should not duplicate excessive context. Include enough detail for an engineer to implement and verify it later.
+Each ticket should be understandable without rereading the whole plan. Restate every plan decision needed to implement that ticket: concrete paths and boundaries, API operations and types, field validation, state transitions, failure and retry behavior, invariants/algorithms, scope exclusions, and test obligations as relevant. Do not replace settled details with references such as `follow the plan`, `handle errors`, `support pagination`, `implement [Component]`, or `use the agreed behavior`. Duplicate a small amount of decision context across dependent tickets when that is necessary to make each handoff unambiguous; avoid duplicating unrelated background.
 
 For mobile UI or user-flow work, the final verification ticket should include simulator verification using the `rn-iso` skill alongside Argent when feasible. Use `rn-iso` to manage the isolated React Native environment and discover the correct device target, then use Argent for UI interaction and verification. Verification is feasible only when the simulator can reach the target state without unavailable credentials, privileged accounts, real calls/SMS, payments, production-only services, or external manual setup. If auth is required, instruct the implementer to check environment variables such as `TEST_USER`, `TEST_EMAIL`, and `TEST_PASSWORD`; use them without printing values if present, and mark Argent verification as blocked if absent. Never invent credentials, request production credentials, or expose credential values.
 
-Prefer vertical slices when possible. Use horizontal/foundation tickets only when they reduce risk or unblock multiple later tickets.
+Prefer vertical slices when possible. Use horizontal/foundation tickets only when they reduce risk or unblock multiple later tickets. After drafting, reconcile the tickets against the decision ledger and add any missing detail to the responsible ticket before writing the summary.
 
 ## `tickets/<number>.md` format
 

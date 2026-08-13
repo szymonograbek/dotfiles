@@ -1,0 +1,14 @@
+{
+  "name": "orbit-mobile-conventions-fixture",
+  "private": true,
+  "dependencies": {
+    "@tanstack/react-query": "5.90.21",
+    "react": "19.2.0",
+    "react-i18next": "16.5.4",
+    "react-native": "0.83.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
